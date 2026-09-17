@@ -1,6 +1,6 @@
 # Kore Tally
 
-A smple starter project for tracking tallies and counts.
+A simple starter project for tracking tallies and counts.
 
 ## Getting Started
 
