@@ -4,7 +4,7 @@ A simple starter project for tracking tallies and counts.
 
 ## Getting Started
 
-This repository is the starting point for the Kore Tally project. More documentation will be added as the project grows.
+Open `index.html` in any browser to use the tally counter. It has `+1`, `-1`, and `Reset` buttons, and remembers the count between visits using your browser's local storage.
 
 ## License
 
