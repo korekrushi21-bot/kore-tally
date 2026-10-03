@@ -1,0 +1,135 @@
+{
+  "expo": {
+    "name": "JARVIS AI",
+    "slug": "jarvis-ai",
+    "scheme": "jarvisai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.example.jarvisai",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "JARVIS AI uses the microphone only while you tap the mic button (or while foreground wake-word listening is switched on) to understand your voice commands.",
+        "NSSpeechRecognitionUsageDescription": "Speech recognition converts what you say into text so the assistant can answer. You see the text before it is sent.",
+        "NSCameraUsageDescription": "The camera is used to photograph crops or documents that you choose to send for AI analysis.",
+        "NSPhotoLibraryUsageDescription": "Choose existing photos of crops to analyse.",
+        "NSLocationWhenInUseUsageDescription": "Your location is used to fetch local weather. It is not stored.",
+        "NSCalendarsUsageDescription": "Used to create calendar events you ask for.",
+        "NSCalendarsFullAccessUsageDescription": "Used to create calendar events you ask for.",
+        "NSContactsUsageDescription": "Used to find a contact's phone number when you ask to call or message them.",
+        "LSApplicationQueriesSchemes": [
+          "whatsapp",
+          "tel",
+          "sms",
+          "maps",
+          "shortcuts",
+          "x-apple-reminderkit",
+          "calshow",
+          "photos-redirect",
+          "mobilesafari",
+          "prefs",
+          "clock-alarm",
+          "clock-worldclock",
+          "https"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.example.jarvisai",
+      "adaptiveIcon": {
+        "backgroundColor": "#05070d",
+        "foregroundImage": "./assets/android-icon-foreground.png"
+      },
+      "permissions": [
+        "RECORD_AUDIO",
+        "CAMERA",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "READ_CALENDAR",
+        "WRITE_CALENDAR",
+        "READ_CONTACTS",
+        "POST_NOTIFICATIONS",
+        "SCHEDULE_EXACT_ALARM",
+        "com.android.alarm.permission.SET_ALARM"
+      ],
+      "blockedPermissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "jarvisai",
+              "host": "listen"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
+    },
+    "plugins": [
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "JARVIS AI uses the microphone only while you tap the mic button.",
+          "speechRecognitionPermission": "Speech recognition converts what you say into text.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
+      ],
+      "expo-secure-store",
+      "expo-sharing",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Used to fetch local weather."
+        }
+      ],
+      [
+        "expo-notifications"
+      ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Used to create calendar events you ask for."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose crop photos to analyse.",
+          "cameraPermission": "Photograph crops for AI analysis."
+        }
+      ],
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Find a contact when you ask to call or message them."
+        }
+      ]
+    ],
+    "extra": {
+      "appName": "JARVIS AI",
+      "backendUrl": "http://localhost:8787"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/favicon.png",
+      "name": "JARVIS AI",
+      "shortName": "JARVIS",
+      "themeColor": "#05070d",
+      "backgroundColor": "#05070d",
+      "display": "standalone"
+    }
+  }
+}

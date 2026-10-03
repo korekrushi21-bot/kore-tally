@@ -1,0 +1,36 @@
+import 'dotenv/config';
+
+const env = process.env;
+
+export const config = {
+  port: Number(env.PORT ?? 8787),
+  /** Shared secret users type once into the app (Settings → AI). Exchanged for a short-lived JWT. */
+  accessCode: env.APP_ACCESS_CODE ?? '',
+  jwtSecret: env.JWT_SECRET ?? '',
+  adminUsername: env.ADMIN_USERNAME ?? 'admin',
+  adminPasswordHash: env.ADMIN_PASSWORD_HASH ?? '',
+  dbPath: env.DATABASE_PATH ?? './data/jarvis.db',
+
+  provider: (env.AI_PROVIDER ?? 'openai') as 'openai' | 'anthropic' | 'custom',
+  aiApiKey: env.AI_API_KEY ?? '',
+  aiModel: env.AI_MODEL ?? '',
+  aiBaseUrl: env.AI_BASE_URL ?? '', // custom / OpenAI-compatible provider
+  anthropicApiKey: env.ANTHROPIC_API_KEY ?? env.AI_API_KEY ?? '',
+  visionModel: env.VISION_MODEL ?? '',
+
+  searchApiKey: env.SEARCH_API_KEY ?? '', // Tavily
+  ttsApiKey: env.TTS_API_KEY ?? '',       // reserved: cloud TTS (optional)
+  sttApiKey: env.STT_API_KEY ?? '',       // reserved: cloud STT (optional)
+
+  corsOrigins: (env.CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+  isProd: env.NODE_ENV === 'production',
+};
+
+export const DEFAULT_MODELS = { openai: 'gpt-4o-mini', anthropic: 'claude-sonnet-5-5', custom: 'default' } as const;
+
+export function assertConfig() {
+  const problems: string[] = [];
+  if (config.jwtSecret.length < 32) problems.push('JWT_SECRET must be at least 32 characters');
+  if (!config.accessCode || config.accessCode.length < 8) problems.push('APP_ACCESS_CODE must be set (8+ chars)');
+  if (problems.length) throw new Error('Invalid configuration:\n - ' + problems.join('\n - '));
+}

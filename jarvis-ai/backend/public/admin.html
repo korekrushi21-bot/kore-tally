@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>JARVIS Admin</title>
+<style>
+  :root { --bg:#05070d; --panel:#0e1524; --line:#1e2b45; --text:#e8f1ff; --sub:#8aa0bd; --acc:#38bdf8; --err:#f87171; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  main { max-width: 980px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; } h2 { font-size: 16px; color: var(--acc); margin-top: 28px; }
+  section, .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin: 10px 0; }
+  input, select, textarea { background:#0a1120; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px; font:inherit; }
+  button { background:var(--acc); color:#04121c; border:0; border-radius:8px; padding:8px 14px; font-weight:700; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--text); border:1px solid var(--line); }
+  button.danger { background:var(--err); }
+  table { width:100%; border-collapse: collapse; } td, th { text-align:left; padding:6px; border-bottom:1px solid var(--line); font-size:13px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .stats { display:grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap:10px; }
+  .stat b { font-size: 22px; display:block; } .sub { color: var(--sub); font-size: 12px; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>JARVIS AI — Admin</h1>
+
+  <section id="login">
+    <div class="row">
+      <input id="u" placeholder="Username" autocomplete="username" />
+      <input id="p" type="password" placeholder="Password" autocomplete="current-password" />
+      <button id="loginBtn">Sign in</button>
+    </div>
+    <div id="loginMsg" class="sub"></div>
+  </section>
+
+  <div id="app" class="hidden">
+    <div class="row"><button class="ghost" id="logout">Sign out</button><span class="sub" id="privacy"></span></div>
+
+    <h2>Usage</h2><div id="stats" class="stats"></div>
+
+    <h2>AI configuration</h2>
+    <section>
+      <div class="row">
+        <select id="provider"><option>openai</option><option>anthropic</option><option>custom</option></select>
+        <input id="model" placeholder="model id" size="28" />
+        <button id="saveAi">Save</button>
+      </div>
+      <div class="sub" id="aiInfo"></div>
+    </section>
+
+    <h2>Users (metadata only — no conversation content exists on the server)</h2>
+    <section><table id="users"></table></section>
+
+    <h2>Shop products</h2>
+    <section>
+      <div class="row">
+        <input id="pn" placeholder="Name" /><input id="pc" placeholder="Category (e.g. Fungicide)" />
+        <input id="pu" placeholder="Unit (e.g. 250 ml)" size="10" /><input id="pp" type="number" placeholder="Price ₹" size="8" />
+        <input id="pq" type="number" placeholder="Stock qty" size="8" />
+        <label><input id="ps" type="checkbox" /> in stock</label>
+      </div>
+      <div class="row" style="margin-top:8px"><input id="pd" placeholder="Description" size="60" /><button id="addProduct">Add product</button></div>
+      <div class="sub">Leave price / qty blank when unknown — the assistant will then say it is unknown instead of guessing.</div>
+      <table id="products"></table>
+    </section>
+
+    <h2>Agriculture reference notes</h2>
+    <section>
+      <div class="row"><input id="an" placeholder="Title" /><input id="ab" placeholder="Note (label-verified info only)" size="60" /><button id="addNote">Add</button></div>
+      <table id="notes"></table>
+    </section>
+
+    <h2>Announcements</h2>
+    <section>
+      <div class="row"><input id="nt" placeholder="Title" /><input id="nb" placeholder="Body" size="60" /><button id="addAnn">Publish</button></div>
+      <table id="anns"></table>
+    </section>
+  </div>
+</main>
+<script src="admin.js"></script>
+</body>
+</html>
