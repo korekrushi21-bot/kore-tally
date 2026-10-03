@@ -7,10 +7,10 @@ let baseUrl = '';
 export function setBackendUrl(u: string) { baseUrl = u.trim().replace(/\/+$/, ''); }
 export const getBackendUrl = () => baseUrl;
 
-/** HTTPS only. Plain http is permitted only for localhost during development builds. */
+/** HTTPS only. Plain http is permitted only for this machine (localhost never leaves the PC) and the Android emulator alias in dev builds. */
 function checkUrl() {
   if (!baseUrl) throw new AppError('unconfigured');
-  const ok = baseUrl.startsWith('https://') || (__DEV__ && /^http:\/\/(localhost|127\.0\.0\.1|10\.0\.2\.2)(:\d+)?/.test(baseUrl));
+  const ok = baseUrl.startsWith('https://') || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(baseUrl) || (__DEV__ && /^http:\/\/10\.0\.2\.2(:\d+)?$/.test(baseUrl));
   if (!ok) throw new AppError('unconfigured', 'HTTPS required');
 }
 

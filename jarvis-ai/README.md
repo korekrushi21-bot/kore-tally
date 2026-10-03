@@ -90,23 +90,34 @@ npm install
 ```
 Set `backendUrl` in `app.json` (or later in the app: Settings → AI). The Android emulator reaches your PC at `http://10.0.2.2:8787` (allowed in dev builds only); real phones need an `https://` URL (deployed server or a tunnel such as Cloudflare Tunnel / ngrok).
 
-**Desktop (Windows/macOS/Linux) — runs in the browser, no native build:**
-```bash
-npx expo start --web                     # dev at http://localhost:8081
-npx expo export --platform web           # static site in dist/ -> host on any HTTPS static host
+**Desktop PC app (Windows) — one click:**
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build-desktop.ps1        # once (and after code changes): builds web app + backend
+powershell -ExecutionPolicy Bypass -File scripts\create-desktop-shortcut.ps1   # optional: puts "JARVIS AI" on your Desktop
 ```
-Use Chrome or Edge (Web Speech API for voice input; Firefox/Safari lack it, so type instead). Click the install icon in the address bar to install it as a desktop app. localhost counts as a secure context so the mic works in dev; production must be HTTPS. The backend must allow the site origin: set `CORS_ORIGINS=https://your-web-host`.
+Then double-click **`JARVIS.cmd`** (or the Desktop shortcut). It starts Ollama (if installed), the backend, and opens JARVIS in its own Edge/Chrome app window at `http://localhost:8787/` (the backend serves the app itself, so no CORS setup). First run: Settings → AI → enter the access code from `backend/.env` → Save backend. `scripts\stop-jarvis.ps1` stops the backend.
+Voice input needs Chrome/Edge (Web Speech API; Edge/Chrome send the audio to Microsoft/Google’s free speech service). Keep `NODE_ENV` unset for local use (production mode demands HTTPS).
+
+*Developer mode (hot reload):* `cd mobile; npx expo start --web` and set `CORS_ORIGINS=http://localhost:8081` in `backend/.env`.
 
 **Android phone:**
-```bash
-npx expo prebuild --platform android      # generates android/ with the permissions in app.json
-npx expo run:android                      # emulator or USB-connected phone (USB debugging on)
+```powershell
+# Local APK build with Android Studio's bundled Java + SDK (what produced the APK in this project):
+cd mobile
+npx expo prebuild --platform android --no-install
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+$env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
+cd android; .\gradlew.bat assembleRelease          # -> app\build\outputs\apk\release\app-release.apk
+# install on a USB-connected phone (USB debugging on):  adb install -r app\build\outputs\apk\release\app-release.apk
+# or run straight onto a device/emulator:  npx expo run:android
 # or cloud build, no Android Studio:
 npm i -g eas-cli && eas login && eas build:configure
 eas build --platform android --profile preview      # APK you can sideload
 eas build --platform android --profile production   # AAB for Google Play
 ```
-`expo-speech-recognition` is a native module, so **Expo Go will not work on the phone**; use `run:android` or an EAS development build (`--profile development`, then `npx expo start --dev-client`).
+`expo-speech-recognition` is a native module, so **Expo Go will not work on the phone**; install the APK (above) or use an EAS development build.
+
+**Pointing the phone at your PC:** the release APK only allows `https://` backends (plus `http://localhost`). To use your PC’s Ollama from the phone, expose the backend over HTTPS with a tunnel (e.g. Cloudflare Tunnel or Tailscale Funnel) and enter that URL + access code in Settings → AI. The PC must be on. The APK is signed with the default debug key (fine for personal sideloading; create your own keystore before publishing to Google Play).
 
 ### Android permissions (already in `app.json`)
 RECORD_AUDIO, CAMERA, location, calendar, contacts, POST_NOTIFICATIONS, SCHEDULE_EXACT_ALARM, SET_ALARM. Runtime permissions are requested only when a feature is first used. Speech recognition needs the Google app / speech service (Marathi/Hindi voice-typing packs can be downloaded for offline use).

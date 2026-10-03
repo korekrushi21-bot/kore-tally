@@ -2,6 +2,7 @@ import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { config } from './config.js';
@@ -16,7 +17,7 @@ export function buildApp() {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
-  app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"], connectSrc: ["'self'"], imgSrc: ["'self'", 'data:'], upgradeInsecureRequests: config.isProd ? [] : null } } }));
+  app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"], connectSrc: ["'self'", 'https://api.open-meteo.com', 'https://geocoding-api.open-meteo.com'], imgSrc: ["'self'", 'data:', 'blob:'], fontSrc: ["'self'", 'data:'], mediaSrc: ["'self'", 'blob:'], upgradeInsecureRequests: config.isProd ? [] : null } } }));
   app.use(cors({ origin: config.corsOrigins.length ? config.corsOrigins : false })); // native app needs no CORS
   app.use(express.json({ limit: '9mb' })); // compressed crop photos as base64
   // HTTPS only in production (behind a TLS-terminating proxy)
@@ -43,6 +44,13 @@ export function buildApp() {
 
   app.use('/admin/api', adminRouter);
   app.use('/admin', express.static(path.resolve('public'), { index: 'admin.html' }));
+
+  // Desktop app: the Expo web build (see scripts/build-desktop.ps1) is served from ./web at the site root.
+  const webDir = path.resolve('web');
+  if (fs.existsSync(path.join(webDir, 'index.html'))) {
+    app.use(express.static(webDir));
+    app.get(/^\/(?!api\/|admin).*/, (_req, res) => res.sendFile(path.join(webDir, 'index.html')));
+  }
 
   app.use((_req, res) => res.status(404).json({ error: 'not_found' }));
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

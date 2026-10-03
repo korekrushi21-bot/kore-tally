@@ -54,7 +54,7 @@ export default function SettingsScreen({ navigation }: any) {
         <Input value={s.assistantName} onChangeText={set('assistantName')} />
         <T sub size={12} style={{ marginTop: 10 }}>Language</T>
         <Seg value={s.language} options={LANGS.map((l) => ({ v: l.code, l: l.label }))} onChange={set('language')} />
-        <T sub size={11}>Auto: replies match the language you use. For voice input needs a fixed recognizer language, so pick one for best accuracy.</T>
+        <T sub size={11}>Auto: replies match the language you use. For voice input a fixed language works best, so pick one for better accuracy.</T>
         <T sub size={12} style={{ marginTop: 10 }}>Voice ({voices.length} available)</T>
         <View style={{ maxHeight: 130 }}>
           <Seg value={s.voiceId ?? ''} options={[{ v: '', l: 'Default' }, ...voices.slice(0, 12).map((v) => ({ v: v.identifier, l: v.name }))]} onChange={(v) => up({ voiceId: v || undefined })} />
