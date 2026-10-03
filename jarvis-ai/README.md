@@ -66,6 +66,13 @@ A local 3–4 B model cannot realistically run inside a normal Android app (RAM/
 3. **Cloud fallback** on an always-on backend: set `AI_FALLBACK_PROVIDER=custom` with a free-tier OpenAI-compatible endpoint in `AI_BASE_URL` (+ its free key), so chat works when Ollama is unreachable. Free tiers have rate/usage limits.
 Without any server the phone app still works offline for maths, time, weather (needs internet), notes and reminders.
 
+### Read-only PC access
+Ask JARVIS things like *“what is in my Documents folder?”*, *“find the file prices”*, *“read notes.txt”*, *“how much disk space is free?”*. It can only **look**: no write, delete, rename, move or run function exists in the code (`backend/src/tools/pc.ts`, enforced by tests).
+- Folders: only `PC_READ_FOLDERS` (default Desktop, Documents, Downloads); symlinks/junctions are resolved so they cannot escape.
+- Never readable: `.env`, keys/certificates, password stores, files named like password/secret/token, `node_modules`, `.git`, `AppData`; only plain-text file types, at most a few thousand characters.
+- Only for the app running **on this PC** (not via a phone/tunnel) and only with **local AI** (Ollama), so file contents never leave the computer. Switch off with `PC_READ_ENABLED=false`.
+- Not included (needs separate, careful design): seeing the screen, controlling the mouse/keyboard, opening or closing programs, or changing files.
+
 ### Voice (free)
 Speech-to-text and text-to-speech use the free system engines: Android’s speech recognizer / TTS, and Chrome/Edge’s Web Speech API on desktop. Note: Chrome’s and many Android recognizers send audio to Google’s servers (free, but not local); Android can use offline language packs. Fully local Whisper/Piper voice is **Requires integration** and not built.
 

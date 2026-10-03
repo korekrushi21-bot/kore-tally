@@ -62,6 +62,15 @@ describe('local AI (Ollama) flow — no API key anywhere', () => {
     expect(s.cloud).toMatchObject({ openai: false, anthropic: false });
   });
 
+  it('routes Marathi/Hindi to the multilingual model and English to the fast model', async () => {
+    tagsModels = [{ name: 'qwen2.5:3b', size: 2e9 }, { name: 'gemma3:4b', size: 3.3e9 }]; await cachedOllama(true);
+    chatLog.length = 0;
+    await chat('hello there');
+    await chat('नमस्कार, तू कसा आहेस');
+    expect(chatLog.map((c) => c.model)).toEqual(['qwen2.5:3b', 'gemma3:4b']);
+    tagsModels = [{ name: 'qwen2.5:3b', size: 2e9 }, { name: 'nomic-embed-text', size: 3e8 }]; await cachedOllama(true);
+  });
+
   it('plain chat works and sends NO tools for a message that needs none', async () => {
     chatLog.length = 0;
     const r = await chat('hello there');

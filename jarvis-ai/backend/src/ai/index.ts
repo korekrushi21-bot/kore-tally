@@ -43,7 +43,7 @@ export async function cachedOllama(force = false): Promise<OllamaStatus> {
 }
 
 /** Decide which provider/model actually serves a request. Local Ollama first; optional cloud fallback if configured. */
-export async function resolveAi(requested?: { provider?: string; model?: string }, needVision = false): Promise<Resolved> {
+export async function resolveAi(requested?: { provider?: string; model?: string; devanagari?: boolean }, needVision = false): Promise<Resolved> {
   const provider = primaryProvider(requested?.provider);
   const wantedModel = requested?.model?.trim() || getSetting('ai.model') || config.aiModel || undefined;
 
@@ -51,7 +51,7 @@ export async function resolveAi(requested?: { provider?: string; model?: string 
     const st = await cachedOllama();
     if (st.running) {
       const pool = needVision ? st.models.filter((m) => m.vision) : st.models;
-      const model = pickModel(pool, needVision ? config.visionModel || wantedModel : wantedModel);
+      const model = pickModel(pool, needVision ? config.visionModel || wantedModel : wantedModel, !!requested?.devanagari);
       if (model) return { ok: true, provider, model, vision: st.models.find((m) => m.name === model)?.vision ?? false, usedFallback: false };
     }
     const fb = config.fallbackProvider;

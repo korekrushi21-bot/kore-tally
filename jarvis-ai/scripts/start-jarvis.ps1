@@ -23,7 +23,7 @@ if (-not (Test-Url "${url}admin/")) {
   Write-Host 'Starting JARVIS backend...'
   Set-Location $backend
   if (Test-Path "$backend\dist\src\index.js") { $args = @('dist\src\index.js') } elseif (Test-Path "$backend\dist\index.js") { $args = @('dist\index.js') } else { Write-Host 'Backend not built. Run scripts\build-desktop.ps1' -ForegroundColor Red; Read-Host 'Press Enter'; exit 1 }
-  Start-Process node -ArgumentList $args -WorkingDirectory $backend -WindowStyle Hidden -RedirectStandardOutput "$env:TEMP\jarvis-backend.log" -RedirectStandardError "$env:TEMP\jarvis-backend.err"
+  Start-Process node -ArgumentList ($args | ForEach-Object { '"' + (Join-Path $backend $_) + '"' }) -WorkingDirectory $backend -WindowStyle Hidden -RedirectStandardOutput "$env:TEMP\jarvis-backend.log" -RedirectStandardError "$env:TEMP\jarvis-backend.err"
   for ($i = 0; $i -lt 30 -and -not (Test-Url "${url}admin/"); $i++) { Start-Sleep -Milliseconds 500 }
   if (-not (Test-Url "${url}admin/")) { Write-Host "Backend did not start. See $env:TEMP\jarvis-backend.err" -ForegroundColor Red; Read-Host 'Press Enter to close'; exit 1 }
 }

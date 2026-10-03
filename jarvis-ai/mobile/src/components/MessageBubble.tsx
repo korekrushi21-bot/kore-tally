@@ -6,7 +6,7 @@ import { useAssistant } from '../hooks/AssistantContext';
 import { Btn, T } from './ui';
 import type { Message } from '../types';
 
-const TOOL_ICON: Record<string, string> = { searchWeb: '🔎 Searching…', getWeather: '🌦️ Checking weather…', createReminder: '📅 Creating reminder…', makePhoneCall: '📞 Preparing call…', calculate: '🧮 Calculating…', getTime: '🕒 Checking time…', translate: '🌐 Translating…', getNews: '📰 Fetching news…', searchProducts: '🏪 Checking shop catalogue…' };
+const TOOL_ICON: Record<string, string> = { searchWeb: '🔎 Searching…', getWeather: '🌦️ Checking weather…', createReminder: '📅 Creating reminder…', makePhoneCall: '📞 Preparing call…', calculate: '🧮 Calculating…', getTime: '🕒 Checking time…', translate: '🌐 Translating…', getNews: '📰 Fetching news…', searchProducts: '🏪 Checking shop catalogue…', listFolder: '🗂 Looking in folder…', findFiles: '🔎 Finding files…', readTextFile: '📄 Reading file (read-only)…', systemInfo: '💻 Checking this PC…' };
 
 export function MessageBubble({ m, isLast }: { m: Message; isLast: boolean }) {
   const { colors, confirm, decline, speakText, stopSpeak, regenerate, state } = useAssistant();

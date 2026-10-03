@@ -1,19 +1,36 @@
 const LANG_NAME: Record<string, string> = { mr: 'Marathi (मराठी)', hi: 'Hindi (हिन्दी)', en: 'English' };
 
-export function systemPrompt(o: { name: string; language: string; memories: string[]; timezone: string; hasLocation: boolean }) {
-  const lang = o.language === 'auto' ? 'the same language the user writes in (Marathi, Hindi or English)' : LANG_NAME[o.language] ?? 'the user language';
-  // Static rules first (stable prefix = cacheable), per-request details last.
-  return `You are ${o.name}, a personal voice assistant. Be helpful, accurate and concise: 1-3 short sentences unless detail is needed. Reply in ${lang}. Plain text only: no markdown, no emojis (replies are read aloud).
-Rules:
-- Current facts (weather, prices, news, market rates) must come from tools, never from memory. If no tool is available or a tool fails, say you cannot check it right now. Never invent prices, weather, stock, contacts, messages, search results or completed actions.
-- Use calculate for arithmetic.
-- Phone actions (reminder, calendar event, note, open app, call, message, alarm, camera scan): call the matching tool IMMEDIATELY with all details; do not ask the user for confirmation yourself, the app shows a Confirm button. Afterwards say briefly what you prepared and that it awaits their confirmation; never say it is done.
-- Shop stock and prices come only from searchProducts; if not found, say so.
-- Never invent medicine or pesticide doses or product labels; tell the user to follow the label and ask an expert.
-- If unsure, say so. Translate directly yourself. Never store or repeat passwords, OTPs or card/ID numbers.
-Now: ${new Date().toLocaleString('en-IN', { timeZone: o.timezone, dateStyle: 'full', timeStyle: 'short' })} (${o.timezone}). Resolve relative times from this and pass local ISO 8601 datetimes to tools.
-Location: ${o.hasLocation ? 'shared by the user (getWeather works without a city).' : 'not shared; ask for a city if weather needs one.'}
-User memory (saved by the user): ${o.memories.length ? o.memories.map((m) => m.slice(0, 200)).join('; ') : 'none'}`;
+/** One short rule per tool group: only the rules for tools actually offered are sent (fewer prompt tokens = faster replies). */
+const RULES: Record<string, string> = {
+  facts: 'Weather, prices, news and market rates must come from tools; never invent them. If a tool fails, say you cannot check it now.',
+  calculate: 'Use calculate for arithmetic.',
+  actions: 'For reminders, calendar, notes, opening apps, calls, messages or alarms call the matching tool at once with all details; the app shows a Confirm button. Never say it is already done.',
+  shop: 'Shop stock and prices come only from searchProducts; if not found, say so.',
+  pc: 'You can only READ files and system info on this PC with the PC tools; you cannot change, create, delete or run anything. Answer only from tool results.',
+};
+
+/**
+ * Compact on purpose. On a CPU-only PC every prompt token costs ~0.2 s, so plain chat gets only a few lines,
+ * and extra rules are added only for the tools offered. Time/location are included only when a tool needs them.
+ */
+export function systemPrompt(o: { name: string; language: string; memories: string[]; timezone: string; hasLocation: boolean; toolNames?: string[] }) {
+  const lang = o.language === 'auto' ? 'the same language as the user (Marathi, Hindi or English)' : LANG_NAME[o.language] ?? 'the user language';
+  const t = new Set(o.toolNames ?? []);
+  const rules: string[] = [];
+  if (['searchWeb', 'getNews', 'getWeather'].some((n) => t.has(n))) rules.push(RULES.facts);
+  if (t.has('calculate')) rules.push(RULES.calculate);
+  if (['createReminder', 'createCalendarEvent', 'createNote', 'openApp', 'makePhoneCall', 'sendMessage', 'setAlarm', 'cameraScan'].some((n) => t.has(n))) rules.push(RULES.actions);
+  if (t.has('searchProducts')) rules.push(RULES.shop);
+  if (['listFolder', 'findFiles', 'readTextFile', 'systemInfo'].some((n) => t.has(n))) rules.push(RULES.pc);
+  const needsTime = ['createReminder', 'createCalendarEvent', 'setAlarm', 'getTime'].some((n) => t.has(n));
+  const parts = [
+    `You are ${o.name}, a voice assistant. Reply in ${lang}, in 1-2 short plain sentences, no markdown.`,
+    ...rules,
+    needsTime ? `Now: ${new Date().toLocaleString('en-IN', { timeZone: o.timezone, dateStyle: 'full', timeStyle: 'short' })} (${o.timezone}); give tools local ISO 8601 datetimes.` : '',
+    t.has('getWeather') && !o.hasLocation ? 'No device location: ask for a city if none is given.' : '',
+    o.memories.length ? `User memory: ${o.memories.slice(0, 8).map((m) => m.slice(0, 120)).join('; ')}` : '',
+  ];
+  return parts.filter(Boolean).join('\n');
 }
 
 export function agriPrompt(language: string, notes: string[]) {

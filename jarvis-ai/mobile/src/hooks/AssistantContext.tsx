@@ -25,7 +25,7 @@ interface Ctx {
   speakText: (t: string) => void; stopSpeak: () => void;
   confirm: (msgId: string, a: ClientAction) => Promise<void>; decline: (msgId: string, a: ClientAction) => void;
   newConversation: () => void; openConversation: (id: string) => void; clearHistory: () => Promise<void>;
-  wakeActive: boolean;
+  wakeActive: boolean; wakeHeard: string; wakeListening: boolean; retryWake: () => void;
   error: string | null; clearError: () => void;
 }
 const C = createContext<Ctx>(null as unknown as Ctx);
@@ -46,6 +46,8 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [wakeActive, setWakeActive] = useState(false);
+  const [wakeHeard, setWakeHeard] = useState('');
+  const [wakeListening, setWakeListening] = useState(false);
   const convId = useRef(store.uid());
   const abortRef = useRef<AbortController | null>(null);
   const lastLang = useRef<'mr' | 'hi' | 'en'>('en');
@@ -145,6 +147,22 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    // Voice commands to stop talking.
+    if (/^\s*(stop|cancel|quiet|be quiet|थांब|थांबा|बस|चूप|रुको|बंद कर)[.!।\s]*$/i.test(text)) { cancel(); return; }
+
+    // Instant on-device answers (greetings, who are you, time, maths, weather, simple reminders/notes). No AI wait.
+    if (text.length < 160) {
+      setSt('processing');
+      const l0 = effLang(text) as 'mr' | 'hi' | 'en';
+      const quick = await localAssistant(text, l0, settingsRef.current).catch(() => null);
+      if (quick) {
+        const actionState: Record<string, 'pending'> = {};
+        quick.actions?.forEach((a) => { actionState[a.id] = 'pending'; });
+        reply(quick.text, { actions: quick.actions, actionState });
+        return;
+      }
+    }
+
     setSt('thinking');
     const ctrl = new AbortController(); abortRef.current = ctrl;
     try {
@@ -240,12 +258,31 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     if (/jarvis/.test(base) || /jarvis/i.test(st.assistantName)) ['जार्विस', 'जारविस', 'जार्वीस', 'जरविस', 'जार्विज', 'जार्वीज', 'जारविज'].forEach((x) => list.add(x));
     return [...list];
   };
+  // Speech recognizers rarely spell a name the same way ("jarvis", "jarvish", "harvest", "जार्विस", "जरवीस"), so match approximately.
+  const lev = (x: string, y: string) => {
+    const d: number[][] = Array.from({ length: x.length + 1 }, (_, i) => [i, ...Array(y.length).fill(0)]);
+    for (let j = 1; j <= y.length; j++) d[0][j] = j;
+    for (let i = 1; i <= x.length; i++) for (let j = 1; j <= y.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
+    return d[x.length][y.length];
+  };
+  const skel = (w: string) => w.replace(/\p{M}/gu, '');
+  const isDev = (w: string) => /[\u0900-\u097F]/.test(w);
   const findWake = (t: string): { found: boolean; rest: string } => {
     const n = norm(t);
-    for (const a of wakeAliases()) {
-      const i = n.indexOf(a);
-      if (i >= 0) return { found: true, rest: n.slice(i + a.length).trim() };
+    const words = n.split(' ').filter(Boolean);
+    const aliases = wakeAliases();
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i];
+      const hit = aliases.some((a) => {
+        if (a.includes(' ')) return false;
+        if (w === a) return true;
+        if (isDev(a)) return isDev(w) && lev(skel(w), skel(a)) <= 1;
+        return !isDev(w) && w.length >= 4 && a.length >= 4 && lev(w, a) <= (a.length >= 6 ? 2 : 1);
+      });
+      if (hit) return { found: true, rest: words.slice(i + 1).join(' ') };
     }
+    // multi-word wake phrases
+    for (const a of aliases) if (a.includes(' ')) { const k = n.indexOf(a); if (k >= 0) return { found: true, rest: n.slice(k + a.length).trim() }; }
     return { found: false, rest: '' };
   };
 
@@ -257,18 +294,21 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       handled = true;
       if (wakeTimer.current) { clearTimeout(wakeTimer.current); wakeTimer.current = null; }
       abortListening();
-      // "Hey JARVIS what is the weather" in one breath -> answer directly; otherwise start listening for the command.
-      if (rest.length > 3) void send(rest, true); else void startVoice();
+      // The wake phrase was heard by the English recognizer. For Marathi/Hindi the words after it would be garbage,
+      // so always listen again in the chosen language. In English, "Hey JARVIS what is the weather" is answered directly.
+      const lang = settingsRef.current.language;
+      if (rest.length > 3 && lang !== 'mr' && lang !== 'hi') void send(rest, true); else void startVoice();
     };
     try {
-      await startListening(sttLocale(), {
+      await startListening('en-IN', {
         onPartial: (t) => {
+          setWakeHeard(t); setWakeListening(true);
           if (handled || wakeTimer.current) return;
           const w = findWake(t);
           // wake word heard but the sentence is not finished: give it 1.8 s, then start listening for the command
           if (w.found) wakeTimer.current = setTimeout(() => { wakeTimer.current = null; woke(findWake(t).rest); }, 1800);
         },
-        onFinal: (t) => { const w = findWake(t); if (w.found) woke(w.rest); },
+        onFinal: (t) => { setWakeHeard(t); setWakeListening(true); const w = findWake(t); if (w.found) woke(w.rest); },
         onEnd: () => {
           if (!handled && wakeOn.current && stateRef.current === 'idle') setTimeout(() => void startWake(), 400);
         },
@@ -279,16 +319,25 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
           else { wakeOn.current = false; setWakeActive(false); }
         },
       }, { continuous: true, onDevice: true });
-      wakeErrors.current = 0;
-    } catch { wakeOn.current = false; setWakeActive(false); }
+      wakeErrors.current = 0; setWakeListening(true);
+    } catch { wakeOn.current = false; setWakeActive(false); setWakeListening(false); }
   }, [send, startVoice]);
+
+  // Called from a button press (a user gesture), so the browser reliably shows its microphone permission prompt.
+  const retryWake = useCallback(() => {
+    setError(null); wakeErrors.current = 0;
+    wakeOn.current = settingsRef.current.alwaysOn;
+    setWakeActive(wakeOn.current);
+    abortListening();
+    if (wakeOn.current) setTimeout(() => void startWake(), 150);
+  }, [startWake]);
 
   useEffect(() => {
     wakeOn.current = settings.alwaysOn && settings.onboarded && ready;
     setWakeActive(wakeOn.current);
     wakeErrors.current = 0;
     if (wakeOn.current) void startWake(); else if (stateRef.current === 'idle') abortListening();
-  }, [settings.alwaysOn, settings.onboarded, settings.wakeWord, settings.assistantName, ready, startWake]);
+  }, [settings.alwaysOn, settings.onboarded, settings.wakeWord, settings.assistantName, settings.language, ready, startWake]);
   // While JARVIS is thinking/speaking the wake listener must be off (it would hear JARVIS's own voice).
   useEffect(() => { if (state === 'thinking' || state === 'speaking' || state === 'processing') abortListening(); }, [state]);
   useEffect(() => {
@@ -337,8 +386,8 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<Ctx>(() => ({
     ready, settings, updateSettings, colors, state, level, partial, pending, setPending, messages, conversations, memories, refreshMemories,
     startVoice, stopVoice, send, cancel, regenerate, speakText, stopSpeak, confirm, decline, newConversation, openConversation, clearHistory,
-    wakeActive, error, clearError: () => setError(null),
-  }), [ready, settings, colors, state, level, partial, pending, messages, conversations, memories, wakeActive, error,
+    wakeActive, wakeHeard, wakeListening, retryWake, error, clearError: () => setError(null),
+  }), [ready, settings, colors, state, level, partial, pending, messages, conversations, memories, wakeActive, wakeHeard, wakeListening, retryWake, error,
     updateSettings, refreshMemories, startVoice, stopVoice, send, cancel, regenerate, speakText, stopSpeak, confirm, decline, newConversation, openConversation, clearHistory]);
 
   return <C.Provider value={value}>{children}</C.Provider>;
