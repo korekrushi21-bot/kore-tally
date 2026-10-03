@@ -65,11 +65,14 @@ export default function SettingsScreen({ navigation }: any) {
         <Slider value={s.volume} min={0} max={1} step={0.1} onChange={set('volume')} />
         <Row label="Speak replies aloud"><Switch value={s.autoSpeak} onValueChange={set('autoSpeak')} /></Row>
         <Btn kind="ghost" label="Test voice" onPress={() => speak(`Hello. I am ${s.assistantName}.`, { locale: speechLocale(s.language === 'auto' ? 'en' : (s.language as 'mr' | 'hi' | 'en')), voice: s.voiceId, rate: s.speechRate, volume: s.volume, onDone: () => {} })} />
-        <Row label="Wake word (app open only)" sub="Phones (iOS and Android) do not allow third-party apps to listen continuously in the background. Works only while the app/tab is open.">
-          <Switch value={s.wakeWordEnabled} onValueChange={set('wakeWordEnabled')} />
+        <Row label="JARVIS always on (hands-free)" sub="While the app is open, listen for the wake phrase and talk without pressing anything. Phones/browsers do not allow listening when the app is closed or hidden.">
+          <Switch value={s.alwaysOn} onValueChange={set('alwaysOn')} />
         </Row>
+        <Row label="Send automatically when I stop talking"><Switch value={s.voiceAutoSend} onValueChange={set('voiceAutoSend')} /></Row>
+        <Row label="Keep listening for a follow-up after JARVIS answers"><Switch value={s.followUp} onValueChange={set('followUp')} /></Row>
+        <T sub size={12}>Wake phrase</T>
         <Input value={s.wakeWord} onChangeText={set('wakeWord')} placeholder="Hey JARVIS" />
-        <T sub size={11}>Hands-free alternatives: Open jarvisai://listen from a launcher/automation shortcut (Android: Tasker/Routines or a home-screen shortcut; desktop: pin the web app). Widget: Requires integration (native).</T>
+        <T sub size={11}>Say “Hey JARVIS” (or just “JARVIS” / “जार्विस”), then your question. Voice recognition for the wake phrase works best with the language set to English or मराठी in Settings. Other launchers: open jarvisai://listen from a shortcut or routine. Widget: Requires integration (native).</T>
       </Glass>
 
       <T bold>AI</T>

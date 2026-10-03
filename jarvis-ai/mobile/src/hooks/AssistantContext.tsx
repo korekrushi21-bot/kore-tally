@@ -20,8 +20,8 @@ interface Ctx {
   pending: string | null; setPending: (t: string | null) => void;
   messages: Message[]; conversations: Conversation[];
   memories: Memory[]; refreshMemories: () => Promise<void>;
-  startVoice: () => Promise<void>; stopVoice: () => void;
-  send: (text: string) => Promise<void>; cancel: () => void; regenerate: () => Promise<void>;
+  startVoice: (opts?: { followUp?: boolean }) => Promise<void>; stopVoice: () => void;
+  send: (text: string, fromVoice?: boolean) => Promise<void>; cancel: () => void; regenerate: () => Promise<void>;
   speakText: (t: string) => void; stopSpeak: () => void;
   confirm: (msgId: string, a: ClientAction) => Promise<void>; decline: (msgId: string, a: ClientAction) => void;
   newConversation: () => void; openConversation: (id: string) => void; clearHistory: () => Promise<void>;
@@ -53,6 +53,11 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const settingsRef = useRef(settings);
   const messagesRef = useRef<Message[]>([]);
   const wakeOn = useRef(false);
+  const voiceTurn = useRef(false);      // last user turn was spoken -> keep the conversation hands-free
+  const lastPartial = useRef('');
+  const wakeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wakeErrors = useRef(0);
+  const startVoiceRef = useRef<(o?: { followUp?: boolean }) => Promise<void>>(async () => {});
 
   const setSt = (s: AssistantState) => { stateRef.current = s; setState(s); };
   const setMsgs = (fn: (m: Message[]) => Message[]) => { messagesRef.current = fn(messagesRef.current); setMessages(messagesRef.current); };
@@ -100,10 +105,17 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     setSt('speaking');
     speak(t, {
       locale: speechLocale(effLang(t)), voice: s.voiceId, rate: s.speechRate, volume: s.volume,
-      onDone: () => { if (stateRef.current === 'speaking') setSt('idle'); },
+      onDone: () => {
+        if (stateRef.current !== 'speaking') return;
+        setSt('idle');
+        const st = settingsRef.current;
+        if (st.alwaysOn && st.followUp && voiceTurn.current && AppState.currentState === 'active') {
+          setTimeout(() => { if (stateRef.current === 'idle') void startVoiceRef.current({ followUp: true }); }, 600);
+        }
+      },
     });
   }, []);
-  const stopSpeak = useCallback(() => { stopSpeaking(); if (stateRef.current === 'speaking') setSt('idle'); }, []);
+  const stopSpeak = useCallback(() => { voiceTurn.current = false; stopSpeaking(); if (stateRef.current === 'speaking') setSt('idle'); }, []);
 
   const reply = (text: string, extra: Partial<Message> = {}) => {
     const m: Message = { id: store.uid(), role: 'assistant', text, ts: Date.now(), ...extra };
@@ -112,9 +124,10 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
     void persist();
   };
 
-  const send = useCallback(async (raw: string) => {
+  const send = useCallback(async (raw: string, fromVoice = false) => {
     const text = raw.trim();
     if (!text) return;
+    voiceTurn.current = fromVoice;
     setPending(null); setPartial(''); setError(null);
     stopSpeaking();
     lastLang.current = detectLang(text);
@@ -178,57 +191,114 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const cancel = useCallback(() => {
-    abortRef.current?.abort(); abortListening(); stopSpeaking(); setPending(null); setPartial(''); setSt('idle');
+    voiceTurn.current = false; abortRef.current?.abort(); abortListening(); stopSpeaking(); setPending(null); setPartial(''); setSt('idle');
   }, []);
 
-  const startVoice = useCallback(async () => {
+  const startVoice = useCallback(async (opts?: { followUp?: boolean }) => {
     if (stateRef.current === 'listening') { stopListening(); return; }
     stopSpeaking(); abortListening();
+    if (wakeTimer.current) { clearTimeout(wakeTimer.current); wakeTimer.current = null; }
     setPartial(''); setPending(null); setError(null);
+    lastPartial.current = '';
+    let got = false;
+    // Recognized text: send straight away (default) or show it for confirmation.
+    const finish = (t: string) => {
+      const text = t.trim();
+      if (!text || got) return;
+      got = true; setPartial('');
+      if (settingsRef.current.voiceAutoSend) void send(text, true); else { voiceTurn.current = true; setPending(text); }
+    };
     try {
       setSt('listening');
       await startListening(sttLocale(), {
-        onPartial: (t) => setPartial(t),
-        onFinal: (t) => { setPartial(''); if (t.trim()) setPending(t); },
+        onPartial: (t) => { lastPartial.current = t; setPartial(t); },
+        onFinal: (t) => finish(t),
         onLevel: setLevel,
-        onEnd: () => { setLevel(0); if (stateRef.current === 'listening') setSt('idle'); },
-        onError: (e) => { setError(friendly(e)); setSt('idle'); },
+        onEnd: () => {
+          setLevel(0);
+          // Some recognizers end without a final result: use what we heard.
+          if (!got && lastPartial.current.trim()) finish(lastPartial.current);
+          else if (!got) voiceTurn.current = false; // silence: end the hands-free conversation, back to wake-word mode
+          if (stateRef.current === 'listening') setSt('idle');
+        },
+        onError: (e) => { voiceTurn.current = false; setError(friendly(e)); setSt('idle'); },
       });
-    } catch (e) { setError(friendly(e)); setSt('idle'); }
-  }, []);
+    } catch (e) { voiceTurn.current = false; setError(friendly(e)); setSt('idle'); }
+  }, [send]);
+  startVoiceRef.current = startVoice;
   const stopVoice = useCallback(() => stopListening(), []);
 
-  // ---------- Foreground-only wake word ("Hey JARVIS") ----------
-  // Android and iOS do not allow third-party apps to listen continuously in the background. This only runs
-  // while the app is open and in the foreground, uses on-device recognition when available,
-  // and stops as soon as the app is backgrounded or the toggle is switched off.
+  // ---------- Always-on (hands-free) mode: wake word while the app is open ----------
+  // Android and iOS do not allow third-party apps to listen continuously in the background, so this runs only
+  // while the app / window is open and visible. Recognition restarts automatically; it stops when the app is
+  // hidden or "JARVIS always on" is switched off. The browser/OS shows its normal "microphone in use" indicator.
+  const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{M}\p{N} ]/gu, ' ').replace(/\s+/g, ' ').trim();
+  const wakeAliases = () => {
+    const st = settingsRef.current;
+    const base = norm(st.wakeWord).replace(/^(hey|hi|hello|ok|okay|ए|हे|हाय)\s+/, '');
+    const list = new Set<string>([base, norm(st.assistantName)].filter((x) => x.length > 2));
+    if (/jarvis/.test(base) || /jarvis/i.test(st.assistantName)) ['जार्विस', 'जारविस', 'जार्वीस', 'जरविस', 'जार्विज', 'जार्वीज', 'जारविज'].forEach((x) => list.add(x));
+    return [...list];
+  };
+  const findWake = (t: string): { found: boolean; rest: string } => {
+    const n = norm(t);
+    for (const a of wakeAliases()) {
+      const i = n.indexOf(a);
+      if (i >= 0) return { found: true, rest: n.slice(i + a.length).trim() };
+    }
+    return { found: false, rest: '' };
+  };
+
   const startWake = useCallback(async () => {
     if (!wakeOn.current || stateRef.current !== 'idle' || AppState.currentState !== 'active') return;
-    const phrase = settingsRef.current.wakeWord.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, '').trim();
-    const hit = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, '').includes(phrase);
+    let handled = false;
+    const woke = (rest: string) => {
+      if (handled) return;
+      handled = true;
+      if (wakeTimer.current) { clearTimeout(wakeTimer.current); wakeTimer.current = null; }
+      abortListening();
+      // "Hey JARVIS what is the weather" in one breath -> answer directly; otherwise start listening for the command.
+      if (rest.length > 3) void send(rest, true); else void startVoice();
+    };
     try {
       await startListening(sttLocale(), {
-        onPartial: (t) => { if (hit(t)) { abortListening(); void startVoice(); } },
-        onFinal: (t) => { if (hit(t)) { abortListening(); void startVoice(); } },
-        onEnd: () => { if (wakeOn.current && stateRef.current === 'idle') setTimeout(() => void startWake(), 400); },
-        onError: () => { wakeOn.current = false; setWakeActive(false); },
+        onPartial: (t) => {
+          if (handled || wakeTimer.current) return;
+          const w = findWake(t);
+          // wake word heard but the sentence is not finished: give it 1.8 s, then start listening for the command
+          if (w.found) wakeTimer.current = setTimeout(() => { wakeTimer.current = null; woke(findWake(t).rest); }, 1800);
+        },
+        onFinal: (t) => { const w = findWake(t); if (w.found) woke(w.rest); },
+        onEnd: () => {
+          if (!handled && wakeOn.current && stateRef.current === 'idle') setTimeout(() => void startWake(), 400);
+        },
+        onError: (e) => {
+          if (e.code === 'mic' || e.code === 'stt_unavailable') { wakeOn.current = false; setWakeActive(false); setError(friendly(e)); return; }
+          wakeErrors.current += 1; // transient (network etc.): retry a few times with a pause
+          if (wakeErrors.current <= 5 && wakeOn.current) setTimeout(() => void startWake(), 3000);
+          else { wakeOn.current = false; setWakeActive(false); }
+        },
       }, { continuous: true, onDevice: true });
+      wakeErrors.current = 0;
     } catch { wakeOn.current = false; setWakeActive(false); }
-  }, [startVoice]);
+  }, [send, startVoice]);
 
   useEffect(() => {
-    wakeOn.current = settings.wakeWordEnabled && ready;
+    wakeOn.current = settings.alwaysOn && settings.onboarded && ready;
     setWakeActive(wakeOn.current);
+    wakeErrors.current = 0;
     if (wakeOn.current) void startWake(); else if (stateRef.current === 'idle') abortListening();
-  }, [settings.wakeWordEnabled, settings.wakeWord, ready, startWake]);
+  }, [settings.alwaysOn, settings.onboarded, settings.wakeWord, settings.assistantName, ready, startWake]);
+  // While JARVIS is thinking/speaking the wake listener must be off (it would hear JARVIS's own voice).
+  useEffect(() => { if (state === 'thinking' || state === 'speaking' || state === 'processing') abortListening(); }, [state]);
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => {
-      if (s !== 'active') { if (stateRef.current === 'listening') abortListening(); abortListening(); setSt('idle'); }
+      if (s !== 'active') { voiceTurn.current = false; abortListening(); stopSpeaking(); setSt('idle'); }
       else if (wakeOn.current) void startWake();
     });
     return () => sub.remove();
   }, [startWake]);
-  useEffect(() => { if (state === 'idle' && wakeOn.current) { const t = setTimeout(() => void startWake(), 600); return () => clearTimeout(t); } }, [state, startWake]);
+  useEffect(() => { if (state === 'idle' && wakeOn.current) { const t = setTimeout(() => void startWake(), 700); return () => clearTimeout(t); } }, [state, startWake]);
 
   const regenerate = useCallback(async () => {
     const last = [...messagesRef.current].reverse().find((m) => m.role === 'user');

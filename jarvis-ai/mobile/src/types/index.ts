@@ -10,6 +10,12 @@ export interface Settings {
   autoSpeak: boolean;
   wakeWordEnabled: boolean;
   wakeWord: string;
+  /** Hands-free: while the app is open, listen for the wake word and talk without pressing anything. */
+  alwaysOn: boolean;
+  /** Send voice input automatically when you stop talking. */
+  voiceAutoSend: boolean;
+  /** After JARVIS answers a spoken question, keep listening briefly for a follow-up. */
+  followUp: boolean;
   provider: 'ollama' | 'openai' | 'anthropic' | 'custom';
   model: string;
   theme: 'dark' | 'light';

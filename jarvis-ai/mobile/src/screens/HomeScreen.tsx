@@ -10,7 +10,7 @@ import { MessageBubble } from '../components/MessageBubble';
 const STATUS = { idle: 'Ready', listening: 'Listening…', thinking: 'Thinking…', speaking: 'Speaking…', processing: 'Processing…' } as const;
 
 export default function HomeScreen({ navigation }: any) {
-  const { colors, settings, state, level, partial, pending, setPending, startVoice, cancel, send, messages, error, clearError, wakeActive } = useAssistant();
+  const { colors, settings, updateSettings, state, level, partial, pending, setPending, startVoice, cancel, send, messages, error, clearError, wakeActive } = useAssistant();
   const [text, setText] = useState('');
   const [typing, setTyping] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -42,7 +42,9 @@ export default function HomeScreen({ navigation }: any) {
         <View style={{ alignItems: 'center', marginTop: 4 }}>
           <AICore state={state} level={level} size={220} />
           <Text style={{ color: colors.accent, fontSize: 18, letterSpacing: 2, marginTop: -30 }}>{STATUS[state]}</Text>
-          {wakeActive && <T sub size={11}>Wake word active (app open only): “{settings.wakeWord}”</T>}
+          <Pressable onPress={() => updateSettings({ alwaysOn: !settings.alwaysOn })} accessibilityLabel="Toggle always on">
+            <T size={12} style={{ color: wakeActive ? colors.ok : colors.sub }}>{wakeActive ? `● ${settings.assistantName} ON — say “${settings.wakeWord}”` : '○ Always-on is off (tap to turn on)'}</T>
+          </Pressable>
           <Waveform state={state} level={level} />
         </View>
 
@@ -79,7 +81,7 @@ export default function HomeScreen({ navigation }: any) {
             <Pressable onPress={() => setTyping((t) => !t)} accessibilityLabel="Type"><Text style={{ fontSize: 28 }}>⌨️</Text></Pressable>
             <Pressable
               accessibilityLabel="Microphone"
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); if (state === 'idle') void startVoice(); else if (state === 'listening') void startVoice(); else cancel(); }}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); if (state === 'idle' || state === 'listening') void startVoice(); else cancel(); }}
               style={{ width: 78, height: 78, borderRadius: 39, backgroundColor: state === 'listening' ? colors.ok : colors.accent, alignItems: 'center', justifyContent: 'center' }}
             >
               <Text style={{ fontSize: 32 }}>{state === 'idle' || state === 'listening' ? '🎙' : '■'}</Text>
