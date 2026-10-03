@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import crypto from 'node:crypto';
 import { z } from 'zod';
-import { activeConfig, getProvider, providerConfigured } from '../ai/index.js';
+import { cachedOllama, cloudConfigured, getProvider, primaryProvider, resolveAi } from '../ai/index.js';
+import { config } from '../config.js';
 import { systemPrompt } from '../ai/prompts.js';
 import type { ChatMsg } from '../ai/types.js';
-import { CLIENT_TOOL_NAMES, CLIENT_TOOLS, SERVER_TOOLS, runServerTool, type ToolContext } from '../tools/index.js';
+import { CLIENT_TOOL_NAMES, runServerTool, selectTools, type ToolContext } from '../tools/index.js';
 import { db } from '../database/db.js';
 
 export const chatRouter = Router();
@@ -37,8 +38,9 @@ chatRouter.post('/chat', async (req, res) => {
   const parsed = Body.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'bad_request' });
   const b = parsed.data;
-  const { provider, model } = activeConfig({ provider: b.provider, model: b.model });
-  if (!providerConfigured(provider)) return res.status(503).json({ error: 'ai_not_configured' });
+  const r0 = await resolveAi({ provider: b.provider, model: b.model });
+  if (!r0.ok) return res.status(503).json({ error: 'ai_not_configured', reason: r0.reason });
+  const { provider, model } = r0;
 
   const ctrl = new AbortController();
   res.on('close', () => { if (!res.writableEnded) ctrl.abort(); }); // client cancelled
@@ -49,10 +51,12 @@ chatRouter.post('/chat', async (req, res) => {
   const toolEvents: { tool: string; status: 'done' | 'error'; summary: string }[] = [];
   const actions: any[] = [];
 
+  const lastUser = [...b.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
+  const tools = selectTools(lastUser);
   try {
     let text = '';
     for (let step = 0; step < MAX_STEPS; step++) {
-      const r = await ai.complete({ system: sys, messages: msgs, tools: [...SERVER_TOOLS, ...CLIENT_TOOLS], model, signal: ctrl.signal });
+      const r = await ai.complete({ system: sys, messages: msgs, tools, model, signal: ctrl.signal });
       text = r.text;
       if (!r.toolCalls.length) break;
       msgs.push({ role: 'assistant', content: r.text, toolCalls: r.toolCalls });
@@ -78,9 +82,25 @@ chatRouter.post('/chat', async (req, res) => {
   }
 });
 
-chatRouter.get('/health', (_req, res) => {
-  const { provider, model } = activeConfig();
-  res.json({ ok: true, provider, model, aiConfigured: providerConfigured(provider) });
+chatRouter.get('/health', async (_req, res) => {
+  const r = await resolveAi();
+  res.json({ ok: true, aiReady: r.ok, provider: r.ok ? r.provider : primaryProvider(), model: r.ok ? r.model : null });
+});
+
+/** AI status for Settings and "Test AI connection": Ollama installed/running/models + optional cloud flags. */
+chatRouter.get('/ai/status', async (_req, res) => {
+  const ollama = await cachedOllama(true);
+  const r = await resolveAi();
+  const hint = ollama.running
+    ? (ollama.models.length ? null : 'no_model')
+    : ollama.installed ? 'not_running' : ollama.installed === false ? 'not_installed' : 'unreachable';
+  res.json({
+    provider: primaryProvider(), selected: r.ok ? { provider: r.provider, model: r.model, fallback: r.usedFallback } : null,
+    connected: r.ok,
+    ollama: { baseUrl: ollama.baseUrl, installed: ollama.installed, running: ollama.running, version: ollama.version ?? null, models: ollama.models, hint },
+    cloud: { openai: cloudConfigured('openai'), anthropic: cloudConfigured('anthropic'), custom: cloudConfigured('custom'), fallback: config.fallbackProvider || null },
+    search: { searxng: !!config.searxngUrl, tavily: !!config.searchApiKey },
+  });
 });
 
 chatRouter.get('/announcements', (_req, res) => {

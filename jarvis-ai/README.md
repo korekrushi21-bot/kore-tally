@@ -13,7 +13,9 @@ jarvis-ai/
    ├─ public/ admin panel (/admin)
    └─ tests/
 ```
-Architecture: `Android app / desktop web app → HTTPS → your backend (JWT) → AI provider / Tavily search / Open-Meteo`.
+Architecture: `Android app / desktop web app → HTTPS → your backend (JWT) → Ollama (local AI, default) / optional cloud AI`, plus free weather (Open-Meteo), free news/Wikipedia search, and your own product database.
+
+**Zero mandatory cost:** the default AI is a local open model served by [Ollama](https://ollama.com). No OpenAI/Anthropic key is needed anywhere. Cloud AI exists only as an optional, clearly-labelled extra.
 
 ## What works vs. what is honest-limited
 
@@ -23,14 +25,14 @@ Architecture: `Android app / desktop web app → HTTPS → your backend (JWT) �
 | STT Marathi/Hindi/English with “recognized text” preview (3 s auto-send, editable) | ✅ via `expo-speech-recognition` (Android recognizer / Web Speech). **Phone needs a dev build, not Expo Go** |
 | TTS with voice, speed, volume, on/off | ✅ on-device system voices (`expo-speech`). Cloud TTS: **Requires integration** (`TTS_API_KEY` reserved) |
 | Wake word “Hey JARVIS” | ⚠️ **Foreground only** (app or browser tab open). Always-on background wake word would need a native Android foreground service plus an on-device wake-word engine (e.g. Porcupine): **Requires integration**, not built. Alternatives: mic button, `jarvisai://listen` shortcut/routine, widget (**Requires integration**) |
-| AI chat + tool calling (OpenAI / Anthropic / custom OpenAI-compatible) | ✅ server-side tool loop |
-| Web search + news (sources shown, retrieval time) | ✅ Tavily (needs `SEARCH_API_KEY`) |
+| AI chat + tool calling | ✅ **Local Ollama by default** (native tools, or prompt-based tools for models without them, e.g. Gemma 3). Optional: OpenAI / Anthropic / custom OpenAI-compatible. Auto-detects Ollama, installed models, and shows setup steps |
+| Web search + news (sources shown, retrieval time) | ✅ free chain with no key: Google News RSS (headlines) + Wikipedia (background, **not live**). Real web search: free self-hosted SearXNG, or Tavily free tier (optional). The local model only summarises what was retrieved |
 | Weather (current, hourly, 7-day, manual city) | ✅ Open-Meteo, free, no key |
 | Reminders (local notification), Calendar events, Notes, Tasks | ✅ on-device |
 | Call / WhatsApp / SMS | ✅ always behind a Confirm button; message is pre-filled, **you** press Send in the target app |
 | Open Phone/WhatsApp/Browser/Maps/Settings/Calendar/Clock/Messages | ✅ public links & intents. No public Camera-app link → in-app camera used |
 | Set alarm | ✅ real alarm on Android; reminder on desktop |
-| Agriculture photo analysis (compressed upload, confidence ≤ 90 %, mandatory disclaimer, no invented doses) | ✅ needs a vision-capable model |
+| Agriculture photo analysis (compressed upload, confidence ≤ 90 %, mandatory disclaimer, no invented doses) | ✅ needs a vision-capable model. Local: `ollama pull gemma3:4b` (or `llama3.2-vision`); small local vision models are less accurate than cloud ones. With none installed the app says **“Vision AI requires an external provider”** and shows nothing invented |
 | Kore Krushi catalogue (DB-backed; unknown price/stock shown as unknown) | ✅ admin-managed |
 | Admin panel (users, AI config, products, agri notes, announcements, stats) | ✅ `/admin`; admins cannot see conversations because the server never stores them |
 | Streaming token-by-token replies | ❌ Not implemented — replies are returned whole (cancel button works) |
@@ -38,27 +40,47 @@ Architecture: `Android app / desktop web app → HTTPS → your backend (JWT) �
 
 Privacy by design: conversations, memories, notes, tasks live **on the device** (AsyncStorage); credentials in the Android Keystore (`expo-secure-store`). The server stores only device-id accounts, usage counters, tool-call metadata (no arguments), shop data. Location is used transiently, never stored. Photos are never stored.
 
-## 1 · Services & keys
+## 1 · What to install on Windows (all free)
 
-| Service | Why | Get it | Configure | Cost (approx.) |
-|---|---|---|---|---|
-| OpenAI **or** Anthropic | the AI brain + vision | platform.openai.com / console.anthropic.com | `backend/.env` `AI_API_KEY` / `ANTHROPIC_API_KEY` | pay-per-use, typically ₹0.1–1 per chat turn on small models; photos cost more |
-| Tavily | web search & news | tavily.com | `SEARCH_API_KEY` | free tier ~1000 searches/mo, then paid |
-| Open-Meteo | weather | none | — | free (non-commercial) |
-| Google Play Console (only to publish) | Play Store release | play.google.com/console | EAS submit | US$25 one-time; sideloading the APK is free |
-| Hosting with HTTPS | backend | Render / Railway / Fly / a VPS + Caddy | see §6 | ~US$0–7/mo |
+| Install | Why | Where |
+|---|---|---|
+| **Node.js 20 or 22 LTS** | runs the backend and the desktop web app | nodejs.org |
+| **Ollama** | runs the AI model locally | ollama.com/download |
+| **One model** (about 2–4 GB) | the actual AI | in a terminal: `ollama pull qwen2.5:3b` (recommended: lightweight, understands Hindi/Marathi reasonably, supports tools). Alternatives already tested here: `gemma3:4b` (also reads images) |
+| Chrome or Edge | desktop voice input | already installed on most PCs |
+| (Android only, optional) Android Studio or an Expo EAS account | build the phone app | see §3 |
+
+You need about 8 GB RAM for a 3–4 B model. A GPU is **not** required but makes replies faster; on CPU-only PCs a reply can take from several seconds to a minute or more, and the first message after idle is slowest (model load). Smaller models (`qwen2.5:1.5b`, `llama3.2:1b`) are faster but less capable.
+
+**No paid key anywhere.** Everything below is optional:
+
+| Optional service | Why | Cost |
+|---|---|---|
+| SearXNG (self-hosted) or Tavily | real web search instead of news-RSS + Wikipedia | SearXNG free; Tavily has a free tier with a monthly limit and needs a free account key |
+| Cloud AI (OpenAI / Anthropic / a free-tier OpenAI-compatible host) | faster/better answers, vision on phones without your PC | **Optional Paid Service** (some vendors have free tiers with rate limits that can change; check theirs). Disabled unless you set `AI_FALLBACK_PROVIDER` / choose it in Settings |
+
+### Android without your PC running
+A local 3–4 B model cannot realistically run inside a normal Android app (RAM/battery), and this project does not embed one (**Requires integration**, e.g. llama.cpp bindings). Choose one in Settings → AI → Backend:
+1. **Your Windows JARVIS server** — reachable from the phone over your Wi-Fi (LAN IP, needs `https` in release builds) or anywhere via a tunnel / Tailscale. PC must be on.
+2. **A server that is always on** (a small VPS, or an old PC) running the same backend + Ollama. Cost: your own hardware or hosting.
+3. **Cloud fallback** on an always-on backend: set `AI_FALLBACK_PROVIDER=custom` with a free-tier OpenAI-compatible endpoint in `AI_BASE_URL` (+ its free key), so chat works when Ollama is unreachable. Free tiers have rate/usage limits.
+Without any server the phone app still works offline for maths, time, weather (needs internet), notes and reminders.
+
+### Voice (free)
+Speech-to-text and text-to-speech use the free system engines: Android’s speech recognizer / TTS, and Chrome/Edge’s Web Speech API on desktop. Note: Chrome’s and many Android recognizers send audio to Google’s servers (free, but not local); Android can use offline language packs. Fully local Whisper/Piper voice is **Requires integration** and not built.
 
 ## 2 · Backend setup
 ```bash
 cd backend
-cp .env.example .env        # fill JWT_SECRET, APP_ACCESS_CODE, AI_API_KEY, SEARCH_API_KEY, ADMIN_*
+cp .env.example .env        # fill JWT_SECRET and APP_ACCESS_CODE (+ ADMIN_*). No AI key needed.
+ollama pull qwen2.5:3b      # once, downloads the free model
 npm install
 npm run hash -- "my admin password"   # paste output into ADMIN_PASSWORD_HASH
-npm run dev                 # http://localhost:8787  (admin: /admin)
+npm run dev                 # http://localhost:8787  (admin: /admin). The log shows whether Ollama + a model were found
 npm test && npm run typecheck
 ```
 API (all `/api/*` need `Authorization: Bearer <jwt>` except auth):
-`POST /api/auth/device` · `GET /api/health` · `POST /api/chat` · `POST /api/agri/analyze` · `POST /api/search` · `GET /api/shop/products` · `GET /api/announcements` · admin: `/admin/api/*`.
+`POST /api/auth/device` · `GET /api/health` · `GET /api/ai/status` (Ollama installed/running/models) · `POST /api/chat` · `POST /api/agri/analyze` · `POST /api/search` · `GET /api/shop/products` · `GET /api/announcements` · admin: `/admin/api/*`.
 
 ## 3 · App setup, run & build
 Requires Node 20+. Android builds need Android Studio (local) or EAS cloud builds.
@@ -104,7 +126,8 @@ Deep link `jarvisai://listen` starts listening. Use it from a home-screen shortc
 | Secrets storage | Android Keystore | browser localStorage (weaker) |
 
 ## 4 · Testing
-- `cd backend && npm test` — calculator (incl. injection attempts), auth, rate-limit-safe flows, admin flow, user disabling, honest “AI not configured”.
+- `cd backend && npm test` — calculator (incl. injection attempts), auth, admin flow, user disabling; **Ollama flow against a fake Ollama server** (detection, model pick, native + prompt-based tool calls, no-model / not-running / no-vision states).
+- Live check against your real Ollama: start the backend, then `node tests/live-ollama.mjs`.
 - `cd mobile && npx tsc --noEmit && npx expo-doctor && npx expo export --platform android --platform web` — type-check, config check, full Android + web bundle compile (all pass). **The app has not been run on a physical device or emulator yet.**
 - Manual checklist on device: mic permission denied → friendly message; airplane mode → “Internet connection unavailable.”; ask “25000 चं 18 टक्के किती?” (uses calculate tool); “उद्या सकाळी 8 वाजता आठवण करून दे” → confirmation card → reminder appears; “राहुलला WhatsApp message पाठव …” → Confirm → WhatsApp opens pre-filled; crop photo → result shows confidence ≤ 90 % + disclaimer.
 
@@ -132,7 +155,11 @@ Open `https://<backend>/admin`, sign in, add products (price/stock may be left b
 | Phone can't reach backend | Needs `https://`; `localhost` means the phone itself; emulator uses `10.0.2.2` |
 | Marathi recognized as gibberish | Settings → Language: choose मराठी (Auto can only guess for typed text); download the Marathi voice-typing pack in Google app settings |
 | No Marathi TTS voice | Android Settings → Text-to-speech output → install Marathi/Hindi voice data; otherwise the system falls back to a default voice (cloud TTS = Requires integration) |
-| Search says unavailable | `SEARCH_API_KEY` missing/invalid |
+| “Local AI is not ready” | Settings → AI → *Test AI connection* tells you which step is missing: install Ollama, start it, or `ollama pull qwen2.5:3b` |
+| Replies take very long | CPU-only PC: use a smaller model (`qwen2.5:1.5b`), close other apps, keep Ollama running (first reply loads the model) |
+| Model ignores tools / answers oddly | very small models are weaker; try `qwen2.5:3b` or `qwen2.5:7b` |
+| Search results look generic | without SearXNG/Tavily only news RSS + Wikipedia are used (stated in the result); set `SEARXNG_URL` for real web search |
+| “Vision AI requires an external provider” | `ollama pull gemma3:4b` (or `llama3.2-vision`), or configure optional cloud AI |
 | Wake word stops | Expected: the OS ends recognition sessions and in background; it restarts while app is foreground |
 | `better-sqlite3` install error | Use Node 20/22 LTS; on Windows install build tools if no prebuilt binary |
 | WhatsApp doesn’t open | Not installed (desktop uses the wa.me web link) |

@@ -4,7 +4,9 @@ process.env.JWT_SECRET = 'x'.repeat(40);
 process.env.APP_ACCESS_CODE = 'test-access-code';
 process.env.DATABASE_PATH = ':memory:';
 process.env.ADMIN_USERNAME = 'admin';
-process.env.AI_API_KEY = ''; // AI intentionally unconfigured
+process.env.AI_API_KEY = '';
+process.env.AI_PROVIDER = 'ollama';
+process.env.OLLAMA_BASE_URL = 'http://127.0.0.1:9'; // nothing listens here: Ollama "not running"
 
 const { calculate } = await import('../src/tools/calc.js');
 const { buildApp } = await import('../src/app.js');
@@ -42,7 +44,7 @@ describe('API security', () => {
     expect((await post('/api/auth/device', { accessCode: 'nope', deviceId: 'device-12345' })).status).toBe(401);
   });
 
-  it('issues a token, then reports AI not configured instead of faking an answer', async () => {
+  it('issues a token, then reports local AI not ready instead of faking an answer', async () => {
     const r = await post('/api/auth/device', { accessCode: 'test-access-code', deviceId: 'device-12345' });
     expect(r.status).toBe(200);
     const { token } = await r.json() as { token: string };

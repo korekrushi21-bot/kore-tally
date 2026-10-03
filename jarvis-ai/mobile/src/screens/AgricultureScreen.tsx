@@ -38,6 +38,7 @@ export default function AgricultureScreen({ navigation, route }: any) {
   return (
     <Screen title="🌾 शेती Assistant" onBack={() => navigation.goBack()}>
       <Glass style={{ gap: 8 }}>
+        <T sub size={13}>Needs a vision model (local: ollama pull gemma3:4b). Small local models are less accurate than cloud ones, so treat results as hints.</T>
         <T sub size={13}>Crop · disease · pest · weed · deficiency identification from a photo. Photos are compressed, sent securely to the AI vision model, and not stored by the app.</T>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Btn label="📷 Take photo" onPress={() => take('camera')} style={{ flex: 1 }} />

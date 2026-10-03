@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, Switch, View } from 'react-native';
+import { Linking, Pressable, Switch, View } from 'react-native';
 import { ask, openAppSettings, shareText, isAndroid, isWeb } from '../utils/platform';
 import Slider from './Slider';
 import { Btn, Glass, Input, Row, Screen, T } from '../components/ui';
 import { useAssistant } from '../hooks/AssistantContext';
 import { LANGS } from '../config';
-import { backendStatus } from '../services/ai/api';
+import { aiStatus, backendStatus, type AiStatus } from '../services/ai/api';
 import { listVoices, speak, type VoiceInfo } from '../services/tts/tts';
 import { getAccessCode, setAccessCode, setToken, wipeSecure } from '../storage/secure';
 import * as store from '../storage/store';
@@ -28,11 +28,19 @@ const Seg = <K extends string>({ value, options, onChange }: { value: K; options
 export default function SettingsScreen({ navigation }: any) {
   const { settings: s, updateSettings: up, clearHistory, refreshMemories, colors } = useAssistant();
   const [status, setStatus] = useState('checking…');
+  const [ai, setAi] = useState<AiStatus | null>(null);
+  const [testing, setTesting] = useState(false);
   const [code, setCode] = useState('');
   const [voices, setVoices] = useState<VoiceInfo[]>([]);
   const [url, setUrl] = useState(s.backendUrl);
 
-  const check = async () => { setStatus('checking…'); setStatus(({ online: '🟢 Connected', offline: '🔴 No internet', unconfigured: '⚪ Not configured', auth: '🟠 Access code rejected', down: '🔴 Backend unavailable' } as const)[await backendStatus()]); };
+  const check = async () => {
+    setTesting(true); setStatus('checking…');
+    const b = await backendStatus();
+    setStatus(({ online: '🟢 reachable', offline: '🔴 no internet', unconfigured: '⚪ not configured', auth: '🟠 access code rejected', down: '🔴 unavailable' } as const)[b]);
+    setAi(b === 'online' ? await aiStatus().catch(() => null) : null);
+    setTesting(false);
+  };
   useEffect(() => { void check(); void getAccessCode().then((c) => setCode(c ?? '')); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { void listVoices(s.language === 'auto' ? undefined : s.language).then(setVoices).catch(() => setVoices([])); }, [s.language]);
 
@@ -65,14 +73,43 @@ export default function SettingsScreen({ navigation }: any) {
       </Glass>
 
       <T bold>AI</T>
-      <Glass style={{ gap: 6 }}>
-        <Seg value={s.provider} options={[{ v: 'openai', l: 'OpenAI' }, { v: 'anthropic', l: 'Anthropic' }, { v: 'custom', l: 'Custom' }]} onChange={set('provider')} />
-        <Input value={s.model} onChangeText={set('model')} placeholder="Model (blank = server default)" autoCapitalize="none" />
-        <Input value={url} onChangeText={setUrl} placeholder="https://your-backend" autoCapitalize="none" keyboardType="url" />
+      <Glass style={{ gap: 8 }}>
+        <T sub size={12}>AI provider</T>
+        <Seg value={s.provider === 'ollama' ? 'ollama' : 'cloud'} options={[{ v: 'ollama', l: 'Local AI — Ollama (free)' }, { v: 'cloud', l: 'Cloud AI — Optional' }]}
+          onChange={(v) => up({ provider: v === 'ollama' ? 'ollama' : 'openai', model: '' })} />
+        {s.provider !== 'ollama' && (
+          <>
+            <Seg value={s.provider} options={[{ v: 'openai', l: 'OpenAI' }, { v: 'anthropic', l: 'Anthropic' }, { v: 'custom', l: 'Custom (OpenAI-compatible)' }]} onChange={set('provider')} />
+            <T sub size={11}>Optional Paid Service: needs an API key configured on the backend (some vendors offer free tiers with limits). Not required.</T>
+            <Input value={s.model} onChangeText={set('model')} placeholder="Model id (blank = backend default)" autoCapitalize="none" />
+          </>
+        )}
+        <Row label="Backend">{null}</Row>
+        <Input value={url} onChangeText={setUrl} placeholder="http://localhost:8787 or https://your-server" autoCapitalize="none" keyboardType="url" />
         <Input value={code} onChangeText={setCode} placeholder="Access code" secureTextEntry autoCapitalize="none" />
-        <Btn label="Save & test connection" onPress={async () => { await up({ backendUrl: url }); await setAccessCode(code || null); await setToken(null); await check(); }} />
-        <T>Status: {status}</T>
-        <T sub size={11}>API keys live only on your backend. The access code is kept in the Android Keystore (desktop web: browser storage).</T>
+        <Btn kind="ghost" label="Save backend" onPress={async () => { await up({ backendUrl: url }); await setAccessCode(code || null); await setToken(null); await check(); }} />
+        <T bold>{ai?.connected ? '● Connected' : '○ Not connected'}{ai?.selected ? `  (${ai.selected.provider}: ${ai.selected.model}${ai.selected.fallback ? ', cloud fallback' : ''})` : ''}</T>
+        <T sub size={12}>Backend: {status}</T>
+        <Btn label="Test AI connection" busy={testing} onPress={check} />
+        {ai && s.provider === 'ollama' && (
+          <>
+            <T sub size={12} style={{ marginTop: 6 }}>Installed models{ai.ollama.version ? ` (Ollama ${ai.ollama.version})` : ''}</T>
+            {ai.ollama.models.length === 0 ? <T sub size={13}>None found.</T> : (
+              <Seg value={s.model || ''} options={[{ v: '', l: 'Auto (lightweight)' }, ...ai.ollama.models.map((m) => ({ v: m.name, l: `${m.name} · ${m.sizeGB} GB${m.vision ? ' · vision' : ''}` }))]} onChange={(v) => up({ model: v })} />
+            )}
+            {ai.ollama.hint && (
+              <View style={{ gap: 6, marginTop: 6 }}>
+                <T bold>{ai.ollama.hint === 'not_installed' ? 'Local AI is not installed.' : ai.ollama.hint === 'not_running' ? 'Ollama is installed but not running.' : ai.ollama.hint === 'no_model' ? 'No AI model downloaded yet.' : 'Cannot reach Ollama from the backend.'}</T>
+                <T sub size={13}>{ai.ollama.hint === 'not_installed' ? '1. Install Ollama from ollama.com/download\n2. In a terminal run: ollama pull qwen2.5:3b\n3. Come back and press “Test AI connection”.'
+                  : ai.ollama.hint === 'not_running' ? 'Start the Ollama app from the Start menu (or run: ollama serve), then press “Test AI connection”.'
+                  : ai.ollama.hint === 'no_model' ? 'In a terminal run: ollama pull qwen2.5:3b   (about 2 GB, runs on an ordinary PC), then press “Test AI connection”.'
+                  : 'Check OLLAMA_BASE_URL in backend/.env and that the backend and Ollama run on the same network.'}</T>
+                <Btn kind="ghost" label="Install / setup instructions" onPress={() => Linking.openURL('https://ollama.com/download')} />
+              </View>
+            )}
+            <T sub size={11}>Voice uses free on-device/system speech. Web search uses free sources (news RSS, Wikipedia); real web search needs an optional SearXNG/Tavily setup on the backend.</T>
+          </>
+        )}
       </Glass>
 
       <T bold>Privacy</T>

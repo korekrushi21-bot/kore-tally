@@ -14,7 +14,7 @@ export const speechLocale = (l: Exclude<Lang, 'auto'>) => (l === 'mr' ? 'mr-IN' 
 
 /** Never show raw API errors; map to friendly text. */
 export class AppError extends Error {
-  constructor(public code: 'offline' | 'ai_down' | 'auth' | 'mic' | 'camera' | 'location' | 'cancelled' | 'unconfigured' | 'stt_network' | 'stt_lang' | 'stt_unavailable' | 'failed', msg?: string) { super(msg ?? code); }
+  constructor(public code: 'offline' | 'ai_down' | 'auth' | 'mic' | 'camera' | 'location' | 'cancelled' | 'unconfigured' | 'stt_network' | 'stt_lang' | 'stt_unavailable' | 'ai_unconfigured' | 'vision_unavailable' | 'failed', msg?: string) { super(msg ?? code); }
 }
 export function friendly(e: unknown): string {
   const code = e instanceof AppError ? e.code : 'failed';
@@ -27,6 +27,8 @@ export function friendly(e: unknown): string {
     location: 'Location permission is unavailable.',
     cancelled: 'Cancelled.',
     unconfigured: 'Backend is not configured. Open Settings → AI and enter your backend URL and access code.',
+    ai_unconfigured: 'Local AI is not ready. Open Settings → AI for setup steps.',
+    vision_unavailable: 'Vision AI requires an external provider or a vision model (e.g. run: ollama pull gemma3:4b). See Settings → AI.',
     stt_network: 'Voice input needs an internet connection to the browser/Google speech service. Check your connection, or type instead.',
     stt_lang: 'This language is not supported for voice input here. Pick another language in Settings, or type instead.',
     stt_unavailable: 'Voice input is not available in this browser. Use Chrome or Edge, or type instead.',

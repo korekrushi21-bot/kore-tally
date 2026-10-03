@@ -60,7 +60,7 @@ export function SearchScreen({ navigation }: any) {
   const { settings } = useAssistant();
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
-  const [res, setRes] = useState<{ summary: string; sources: Source[] } | null>(null);
+  const [res, setRes] = useState<{ summary: string; sources: Source[]; searchSource?: string; limitation?: string | null } | null>(null);
   const [err, setErr] = useState('');
   const go = async () => {
     if (!q.trim()) return;
@@ -76,7 +76,7 @@ export function SearchScreen({ navigation }: any) {
       {res && (
         <Glass>
           <T>{res.summary}</T>
-          <T sub size={12} style={{ marginTop: 10 }}>Retrieved just now. Verify prices and news with the sources.</T>
+          <T sub size={12} style={{ marginTop: 10 }}>Retrieved just now via {res.searchSource ?? 'web'}. {res.limitation ?? ''} Verify prices and news with the sources.</T>
           {res.sources.map((s, i) => (
             <Pressable key={i} onPress={() => /^https:\/\//.test(s.url) && Linking.openURL(s.url)} style={{ marginTop: 6 }}>
               <Text numberOfLines={2} style={{ color: '#38bdf8' }}>{i + 1}. {s.title || s.url}</Text>
