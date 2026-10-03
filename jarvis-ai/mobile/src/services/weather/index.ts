@@ -23,9 +23,15 @@ export async function currentCoords(): Promise<{ lat: number; lon: number }> {
 
 export async function geocode(name: string) {
   if (!(await isOnline())) throw new AppError('offline');
-  const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=5&language=en`);
-  if (!r.ok) throw new AppError('failed');
-  const j = await r.json();
+  // Devanagari names only match when the geocoder is told the language (mr / hi).
+  const langs = /[\u0900-\u097F]/.test(name) ? ['mr', 'hi', 'en'] : ['en'];
+  let j: any = {};
+  for (const l of langs) {
+    const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=5&language=${l}`);
+    if (!r.ok) throw new AppError('failed');
+    j = await r.json();
+    if (j.results?.length) break;
+  }
   return ((j.results ?? []) as any[]).map((x) => ({
     name: [x.name, x.admin1, x.country].filter(Boolean).join(', '), lat: x.latitude as number, lon: x.longitude as number,
   }));

@@ -147,7 +147,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       const r = await chat({
         messages: history, language: effLang(text), assistantName: s.assistantName,
         memories: (await store.loadMemories()).map((m) => m.text),
-        location, provider: s.provider, model: s.model || undefined,
+        location, provider: s.provider, model: s.model || undefined, // blank model = backend auto-picks an installed local model
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       }, ctrl.signal);
       const actionState: Record<string, 'pending'> = {};
@@ -157,7 +157,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
       if (e instanceof AppError && e.code === 'cancelled') { setSt('idle'); return; }
       // AI unreachable/unconfigured: answer what we can exactly on-device (maths, time, weather, notes, reminders).
       const code = e instanceof AppError ? e.code : 'failed';
-      if (['offline', 'ai_down', 'unconfigured', 'auth'].includes(code)) {
+      if (['offline', 'ai_down', 'unconfigured', 'auth', 'ai_unconfigured'].includes(code)) {
         const l = effLang(text) as 'mr' | 'hi' | 'en';
         const local = await localAssistant(text, l, settingsRef.current).catch(() => null);
         if (local) {

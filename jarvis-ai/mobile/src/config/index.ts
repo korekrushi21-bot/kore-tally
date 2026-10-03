@@ -16,7 +16,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoSpeak: true,
   wakeWordEnabled: false,
   wakeWord: 'Hey JARVIS',
-  provider: 'openai',
+  provider: 'ollama', // Local AI (Ollama) by default: free, no API key
   model: '',
   theme: 'dark',
   animation: 'normal',

@@ -10,7 +10,7 @@ export interface Settings {
   autoSpeak: boolean;
   wakeWordEnabled: boolean;
   wakeWord: string;
-  provider: 'openai' | 'anthropic' | 'custom';
+  provider: 'ollama' | 'openai' | 'anthropic' | 'custom';
   model: string;
   theme: 'dark' | 'light';
   animation: 'low' | 'normal' | 'high';

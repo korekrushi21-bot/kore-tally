@@ -1,7 +1,7 @@
 import { db } from '../database/db.js';
 import type { ToolDef } from '../ai/types.js';
 import { calculate } from './calc.js';
-import { searchWeb, type SearchResult } from './search.js';
+import { searchWeb, type SearchOutput, type SearchResult } from './search.js';
 
 export interface ToolContext {
   userId: number; timezone: string;
@@ -42,8 +42,13 @@ async function weather(args: any, ctx: ToolContext) {
   let { lat, lon } = ctx.location ?? {} as { lat?: number; lon?: number };
   let place = ctx.location?.name ?? 'device location';
   if (args.city) {
-    const g: any = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(args.city)}&count=1`, { signal: ctx.signal })).json();
-    const r = g.results?.[0];
+    // Open-Meteo matches names in the language you pass: Devanagari names need language=mr / hi.
+    const langs = /[\u0900-\u097F]/.test(String(args.city)) ? ['mr', 'hi', 'en'] : ['en'];
+    let r: any;
+    for (const l of langs) {
+      const g: any = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(args.city)}&count=1&language=${l}`, { signal: ctx.signal })).json();
+      if ((r = g.results?.[0])) break;
+    }
     if (!r) return { error: `City "${args.city}" not found` };
     lat = r.latitude; lon = r.longitude; place = [r.name, r.admin1].filter(Boolean).join(', ');
   }
@@ -60,9 +65,9 @@ async function weather(args: any, ctx: ToolContext) {
   };
 }
 
-function summarize(r: Awaited<ReturnType<typeof searchWeb>>, ctx: ToolContext) {
+function summarize(r: SearchOutput, ctx: ToolContext) {
   r.results.forEach((x: SearchResult) => { if (!ctx.sources.find((s) => s.url === x.url)) ctx.sources.push({ title: x.title, url: x.url }); });
-  return { retrievedAt: r.retrievedAt, answer: r.answer, results: r.results.map((x) => ({ title: x.title, url: x.url, published: x.published, snippet: x.snippet })) };
+  return { retrievedAt: r.retrievedAt, searchSource: r.provider, limitation: r.note, answer: r.answer, results: r.results.map((x) => ({ title: x.title, url: x.url, published: x.published, snippet: x.snippet })) };
 }
 
 export function searchProducts(query = '', category = '') {
@@ -73,6 +78,28 @@ export function searchProducts(query = '', category = '') {
      WHERE (p.name LIKE ? OR p.description LIKE ? OR c.name LIKE ?) AND (?='' OR c.name LIKE ?)
      ORDER BY p.name LIMIT 30`,
   ).all(like, like, like, category, `%${category}%`).map((r: any) => ({ ...r, inStock: !!r.inStock }));
+}
+
+/** Which tools to offer for this message. Small local models are slow and error-prone with many tool schemas,
+ *  so only tools whose trigger words appear are sent. No match = plain chat (fastest). */
+const TRIGGERS: Record<string, RegExp> = {
+  searchWeb: /(search|google|internet|online|latest|current|price|rate|market|mandi|bhav|news|who is|find out|शोध|इंटरनेट|भाव|बाजार|बातम्या|ताज्या|खबर|मंडी|खोज)/i,
+  getNews: /(news|headline|बातम्या|खबर|समाचार)/i,
+  getWeather: /(weather|rain|temperature|forecast|humid|umbrella|हवामान|पाऊस|तापमान|मौसम|बारिश|उन्ह|ऊन)/i,
+  getTime: /(what time|current time|time now|today'?s date|what day|वेळ|तारीख|समय|वाजले|कितने बजे)/i,
+  calculate: /(calculat|percent|%|\d\s*[-+*/x×÷^]\s*\d|गणित|टक्के|प्रतिशत|जोड|वजा|गुणा|भाग)/i,
+  searchProducts: /(shop|store|stock|available|product|fungicide|herbicide|pesticide|insecticide|fertili[sz]er|seed|दुकान|उत्पादन|तणनाशक|फंगीसाइड|कीटकनाशक|खत|बियाणे|उपलब्ध|दवा)/i,
+  createReminder: /(remind|reminder|आठवण|याद दिला|याद दिलाओ)/i,
+  setAlarm: /(alarm|wake me|अलार्म|गजर)/i,
+  createCalendarEvent: /(calendar|meeting|appointment|schedule|event|कॅलेंडर|भेट|मीटिंग|कार्यक्रम)/i,
+  createNote: /(\bnote\b|नोट|नोंद)/i,
+  openApp: /(open|launch|उघड|खोल|सुरू कर)/i,
+  makePhoneCall: /(\bcall\b|phone|dial|फोन|कॉल|दूरध्वनी)/i,
+  sendMessage: /(message|whatsapp|sms|text him|text her|मेसेज|संदेश|पाठव|भेज)/i,
+  cameraScan: /(photo|scan|camera|crop|disease|pest|leaf|फोटो|पीक|रोग|कीड|पान)/i,
+};
+export function selectTools(text: string): ToolDef[] {
+  return [...SERVER_TOOLS, ...CLIENT_TOOLS].filter((t) => TRIGGERS[t.name]?.test(text));
 }
 
 /** Runs a server tool. Always returns JSON-serialisable data; failures become {error} so the model reports them honestly. */
@@ -94,7 +121,7 @@ export async function runServerTool(name: string, args: Record<string, any>, ctx
     }
   } catch (e) {
     ok = false;
-    return { error: e instanceof Error && /not configured/.test(e.message) ? 'This tool is not configured on the server.' : 'Tool failed.' };
+    return { error: 'Tool failed or returned no results.' };
   } finally {
     db.prepare('INSERT INTO tool_logs(user_id,tool,ok,ms) VALUES (?,?,?,?)').run(ctx.userId, name, ok ? 1 : 0, Date.now() - t0);
   }

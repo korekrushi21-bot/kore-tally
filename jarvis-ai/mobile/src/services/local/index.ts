@@ -92,6 +92,6 @@ function fmtNum(n: number, lang: L, label: string) {
 }
 
 export const NO_AI_HELP = (lang: L) => say(lang,
-  'AI chat is not set up yet, so I can only do maths, time, weather, simple notes and reminders. Add an AI key to the backend to unlock everything else.',
-  'AI चॅट अजून सेट केलेले नाही, त्यामुळे मी फक्त गणित, वेळ, हवामान, नोट्स व रिमाइंडर करू शकतो. बाकी सर्वासाठी बॅकएंडमध्ये AI की जोडा.',
-  'AI चैट अभी सेट नहीं है, इसलिए मैं केवल गणित, समय, मौसम, नोट्स और रिमाइंडर कर सकता हूँ। बाकी सब के लिए बैकएंड में AI की जोड़ें।');
+  'Local AI is not ready yet, so I can only do maths, time, weather, simple notes and reminders. Open Settings → AI to connect Ollama (free) and unlock everything else.',
+  'लोकल AI अजून तयार नाही, त्यामुळे मी फक्त गणित, वेळ, हवामान, नोट्स व रिमाइंडर करू शकतो. बाकी सर्वासाठी Settings → AI मध्ये Ollama (मोफत) जोडा.',
+  'लोकल AI अभी तैयार नहीं है, इसलिए मैं केवल गणित, समय, मौसम, नोट्स और रिमाइंडर कर सकता हूँ। बाकी सब के लिए Settings → AI में Ollama (मुफ़्त) जोड़ें।');

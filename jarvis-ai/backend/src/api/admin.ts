@@ -2,7 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { requireAdmin, signAdmin } from '../auth/middleware.js';
-import { activeConfig, providerConfigured } from '../ai/index.js';
+import { cloudConfigured, primaryProvider, resolveAi } from '../ai/index.js';
 import { db, getSetting, setSetting, verifyAdmin } from '../database/db.js';
 
 export const adminRouter = Router();
@@ -43,12 +43,12 @@ adminRouter.post('/users/:id/disabled', (req, res) => {
 });
 
 // ---- AI configuration (keys are env-only, never exposed) ----
-adminRouter.get('/ai', (_req, res) => {
-  const a = activeConfig();
-  res.json({ ...a, configured: { openai: providerConfigured('openai'), anthropic: providerConfigured('anthropic'), custom: providerConfigured('custom') } });
+adminRouter.get('/ai', async (_req, res) => {
+  const r = await resolveAi();
+  res.json({ provider: primaryProvider(), model: r.ok ? r.model : (getSetting('ai.model') ?? ''), ready: r.ok, configured: { openai: cloudConfigured('openai'), anthropic: cloudConfigured('anthropic'), custom: cloudConfigured('custom') } });
 });
 adminRouter.put('/ai', (req, res) => {
-  const v = z.object({ provider: z.enum(['openai', 'anthropic', 'custom']), model: z.string().max(80) }).safeParse(req.body);
+  const v = z.object({ provider: z.enum(['ollama', 'openai', 'anthropic', 'custom']), model: z.string().max(80) }).safeParse(req.body);
   if (!v.success) return res.status(400).json({ error: 'bad_request' });
   setSetting('ai.provider', v.data.provider); setSetting('ai.model', v.data.model);
   res.json({ ok: true, current: getSetting('ai.provider') });

@@ -34,7 +34,7 @@ async function load() {
 
   const ai = await api('/ai');
   $('provider').value = ai.provider; $('model').value = ai.model;
-  $('aiInfo').textContent = 'Keys configured on server — openai: ' + ai.configured.openai + ', anthropic: ' + ai.configured.anthropic + ', custom: ' + ai.configured.custom + '. Keys are never shown or editable here.';
+  $('aiInfo').textContent = 'Local AI ready: ' + ai.ready + '. Optional cloud keys on server — openai: ' + ai.configured.openai + ', anthropic: ' + ai.configured.anthropic + ', custom: ' + ai.configured.custom + '. Keys are never shown or editable here.';
 
   const u = await api('/users');
   fill($('users'), ['ID', 'Created', 'Last seen', 'Requests', 'Status', ''], u.users.map((x) => [x.id, x.createdAt, x.lastSeen, x.requests, x.disabled ? 'DISABLED' : 'active',

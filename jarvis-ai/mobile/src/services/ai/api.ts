@@ -35,7 +35,12 @@ async function rawFetch(path: string, opts: Opts): Promise<any> {
       signal: ctrl.signal,
     });
     if (res.status === 401 || res.status === 403) throw new AppError('auth');
-    if (!res.ok) throw new AppError('ai_down');
+    if (!res.ok) {
+      const err = await res.json().then((j: any) => String(j?.error ?? '')).catch(() => '');
+      if (err === 'vision_unavailable') throw new AppError('vision_unavailable');
+      if (err === 'ai_not_configured') throw new AppError('ai_unconfigured');
+      throw new AppError('ai_down');
+    }
     return await res.json();
   } catch (e) {
     if (e instanceof AppError) throw e;
@@ -72,16 +77,25 @@ export const chat = (body: {
   language: string; assistantName: string; memories: string[];
   location?: { lat: number; lon: number; name?: string };
   provider?: string; model?: string; timezone?: string;
-}, signal?: AbortSignal): Promise<ChatReply> => api('/api/chat', { method: 'POST', body, signal });
+}, signal?: AbortSignal): Promise<ChatReply> => api('/api/chat', { method: 'POST', body, signal, timeoutMs: 240000 }); // local models on CPU can be slow
 
 export const analyzeCrop = (body: { imageBase64: string; mimeType: string; language: string; note?: string }, signal?: AbortSignal): Promise<AgriResult> =>
   api('/api/agri/analyze', { method: 'POST', body, signal, timeoutMs: 90000 });
 
-export const webSearch = (q: string, language: string, signal?: AbortSignal): Promise<{ summary: string; sources: Source[] }> =>
-  api('/api/search', { method: 'POST', body: { q, language }, signal });
+export const webSearch = (q: string, language: string, signal?: AbortSignal): Promise<{ summary: string; sources: Source[]; searchSource?: string; limitation?: string | null }> =>
+  api('/api/search', { method: 'POST', body: { q, language }, signal, timeoutMs: 240000 });
 
 export const listProducts = (q = '', category = ''): Promise<{ products: Product[]; categories: string[] }> =>
   api(`/api/shop/products?q=${encodeURIComponent(q)}&category=${encodeURIComponent(category)}`);
+
+export interface AiStatus {
+  provider: string; connected: boolean;
+  selected: { provider: string; model: string; fallback: boolean } | null;
+  ollama: { baseUrl: string; installed: boolean | null; running: boolean; version: string | null; models: { name: string; sizeGB: number; vision: boolean }[]; hint: 'no_model' | 'not_running' | 'not_installed' | 'unreachable' | null };
+  cloud: { openai: boolean; anthropic: boolean; custom: boolean; fallback: string | null };
+  search: { searxng: boolean; tavily: boolean };
+}
+export const aiStatus = (): Promise<AiStatus> => api('/api/ai/status', { timeoutMs: 15000 });
 
 export const announcements = (): Promise<{ items: { id: number; title: string; body: string }[] }> => api('/api/announcements');
 

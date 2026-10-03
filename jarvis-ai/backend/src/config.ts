@@ -11,22 +11,25 @@ export const config = {
   adminPasswordHash: env.ADMIN_PASSWORD_HASH ?? '',
   dbPath: env.DATABASE_PATH ?? './data/jarvis.db',
 
-  provider: (env.AI_PROVIDER ?? 'openai') as 'openai' | 'anthropic' | 'custom',
+  /** Default is local AI (Ollama): no API key and no cost. Cloud providers are optional. */
+  provider: (env.AI_PROVIDER ?? 'ollama') as 'ollama' | 'openai' | 'anthropic' | 'custom',
+  ollamaBaseUrl: env.OLLAMA_BASE_URL ?? 'http://localhost:11434',
+  /** Optional: used only if Ollama is unreachable/has no model. */
+  fallbackProvider: (env.AI_FALLBACK_PROVIDER ?? '') as '' | 'openai' | 'anthropic' | 'custom',
   aiApiKey: env.AI_API_KEY ?? '',
   aiModel: env.AI_MODEL ?? '',
   aiBaseUrl: env.AI_BASE_URL ?? '', // custom / OpenAI-compatible provider
   anthropicApiKey: env.ANTHROPIC_API_KEY ?? env.AI_API_KEY ?? '',
   visionModel: env.VISION_MODEL ?? '',
 
-  searchApiKey: env.SEARCH_API_KEY ?? '', // Tavily
+  searchApiKey: env.SEARCH_API_KEY ?? '', // Tavily (optional, has a free tier)
+  searxngUrl: (env.SEARXNG_URL ?? '').replace(/\/+$/, ''), // optional self-hosted metasearch (free)
   ttsApiKey: env.TTS_API_KEY ?? '',       // reserved: cloud TTS (optional)
   sttApiKey: env.STT_API_KEY ?? '',       // reserved: cloud STT (optional)
 
   corsOrigins: (env.CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
   isProd: env.NODE_ENV === 'production',
 };
-
-export const DEFAULT_MODELS = { openai: 'gpt-4o-mini', anthropic: 'claude-sonnet-5-5', custom: 'default' } as const;
 
 export function assertConfig() {
   const problems: string[] = [];
