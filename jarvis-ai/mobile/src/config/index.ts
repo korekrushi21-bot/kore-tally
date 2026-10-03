@@ -5,7 +5,9 @@ const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, string>;
 
 /** Change the app's default name in app.json -> expo.extra.appName (users can also rename it in Settings). */
 export const APP_NAME = extra.appName || 'JARVIS AI';
-export const DEFAULT_BACKEND_URL = extra.backendUrl || '';
+// Desktop app: when the page is served by the JARVIS backend itself, talk to that same origin.
+const sameOrigin = typeof window !== 'undefined' && window.location?.protocol?.startsWith('http') && window.location.port === '8787' ? window.location.origin : '';
+export const DEFAULT_BACKEND_URL = sameOrigin || extra.backendUrl || '';
 export const SHOP_NAME = 'Kore Krushi Seva Kendra';
 
 export const DEFAULT_SETTINGS: Settings = {
