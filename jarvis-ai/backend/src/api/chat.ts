@@ -6,6 +6,7 @@ import { config } from '../config.js';
 import { systemPrompt } from '../ai/prompts.js';
 import type { ChatMsg } from '../ai/types.js';
 import { CLIENT_TOOL_NAMES, runServerTool, selectTools, type ToolContext } from '../tools/index.js';
+import { allowedRoots } from '../tools/pc.js';
 import { db } from '../database/db.js';
 
 export const chatRouter = Router();
@@ -38,25 +39,32 @@ chatRouter.post('/chat', async (req, res) => {
   const parsed = Body.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'bad_request' });
   const b = parsed.data;
-  const r0 = await resolveAi({ provider: b.provider, model: b.model });
+  const lastForLang = [...b.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
+  const r0 = await resolveAi({ provider: b.provider, model: b.model, devanagari: /[\u0900-\u097F]/.test(lastForLang) || b.language === 'mr' || b.language === 'hi' });
   if (!r0.ok) return res.status(503).json({ error: 'ai_not_configured', reason: r0.reason });
   const { provider, model } = r0;
 
   const ctrl = new AbortController();
   res.on('close', () => { if (!res.writableEnded) ctrl.abort(); }); // client cancelled
-  const ctx: ToolContext = { userId: req.userId!, timezone: b.timezone, location: b.location, sources: [], signal: ctrl.signal };
+  const ctx: ToolContext = { userId: req.userId!, timezone: b.timezone, location: b.location, sources: [], signal: ctrl.signal, pcAllowed: false };
   const ai = getProvider(provider);
-  const sys = systemPrompt({ name: b.assistantName, language: b.language, memories: b.memories, timezone: b.timezone, hasLocation: !!b.location });
+  const lastUserText = [...b.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
+  // Read-only PC tools: only for requests that come from this PC itself (not via a tunnel/proxy) and only with local AI,
+  // so file contents never leave the machine.
+  const viaProxy = !!req.headers['x-forwarded-for'] || !!req.headers['forwarded'];
+  const loopback = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress ?? '');
+  const pcAllowed = config.pcReadEnabled && provider === 'ollama' && loopback && !viaProxy && allowedRoots().length > 0;
+  const tools = selectTools(lastUserText, pcAllowed);
+  ctx.pcAllowed = pcAllowed;
+  const sys = systemPrompt({ name: b.assistantName, language: b.language, memories: b.memories, timezone: b.timezone, hasLocation: !!b.location, toolNames: tools.map((t) => t.name) });
   const msgs: ChatMsg[] = b.messages.map((m) => (m.role === 'user' ? { role: 'user', content: m.content } : { role: 'assistant', content: m.content }));
   const toolEvents: { tool: string; status: 'done' | 'error'; summary: string }[] = [];
   const actions: any[] = [];
 
-  const lastUser = [...b.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
-  const tools = selectTools(lastUser);
   try {
     let text = '';
     for (let step = 0; step < MAX_STEPS; step++) {
-      const r = await ai.complete({ system: sys, messages: msgs, tools, model, signal: ctrl.signal });
+      const r = await ai.complete({ system: sys, messages: msgs, tools, model, maxTokens: 220, signal: ctrl.signal }); // voice replies are short
       text = r.text;
       if (!r.toolCalls.length) break;
       msgs.push({ role: 'assistant', content: r.text, toolCalls: r.toolCalls });

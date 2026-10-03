@@ -2,7 +2,10 @@ import { execFile } from 'node:child_process';
 import { ProviderError, type AIProvider, type ChatMsg, type CompleteParams, type CompleteResult, type ToolDef } from './types.js';
 
 /** Models likely to run on an ordinary PC, in order of preference (used only if installed). */
+/** English / general: models that reuse the prompt cache (fast on CPU). */
 export const PREFERRED_MODELS = ['qwen2.5:3b', 'llama3.2:3b', 'qwen2.5:7b', 'llama3.1:8b', 'gemma3:4b', 'gemma3:1b', 'phi3:mini', 'qwen2.5:1.5b', 'llama3.2:1b'];
+/** Marathi / Hindi (Devanagari): better multilingual quality first, even though slower. */
+export const MULTILINGUAL_MODELS = ['gemma3:4b', 'qwen2.5:7b', 'llama3.1:8b', 'qwen2.5:3b', 'llama3.2:3b', 'phi3:mini'];
 const VISION_HINT = /(llava|vision|vl\b|qwen2\.5vl|minicpm-v|moondream|bakllava|gemma3|granite3\.2-vision|mistral-small3)/i;
 const NOT_CHAT = /(embed|nomic|bge|minilm|rerank)/i;
 // gemma3:1b is text-only (the 4b+ variants are multimodal)
@@ -44,24 +47,30 @@ export async function ollamaStatus(baseUrl: string): Promise<OllamaStatus> {
 }
 
 /** Pick a model: explicit choice (if installed) > preferred lightweight list > smallest installed. */
-export function pickModel(models: OllamaStatus['models'], wanted?: string): string | null {
+export function pickModel(models: OllamaStatus['models'], wanted?: string, devanagari = false): string | null {
   if (!models.length) return null;
   if (wanted) {
     const hit = models.find((m) => m.name === wanted) ?? models.find((m) => m.name.split(':')[0] === wanted.split(':')[0] && !wanted.includes(':'));
     if (hit) return hit.name;
   }
-  for (const p of PREFERRED_MODELS) { const m = models.find((x) => x.name === p); if (m) return m.name; }
+  for (const p of devanagari ? MULTILINGUAL_MODELS : PREFERRED_MODELS) { const m = models.find((x) => x.name === p); if (m) return m.name; }
   return [...models].sort((a, b) => a.sizeGB - b.sizeGB)[0].name;
 }
 
 const noToolSupport = new Set<string>(); // models that rejected native tool calling
 
+function compactTool(t: ToolDef) {
+  const props = Object.keys(((t.parameters as any)?.properties ?? {}) as Record<string, unknown>);
+  const req = new Set(((t.parameters as any)?.required ?? []) as string[]);
+  return `${t.name}(${props.map((k) => (req.has(k) ? k : k + '?')).join(', ')}): ${t.description.split('. ')[0]}`;
+}
+
 function toolPrompt(tools: ToolDef[]) {
   return `\n\nTOOL USE (this model has no native tool calling): to call a tool, reply with ONLY one or more blocks of the form
 <tool_call>{"name":"TOOL_NAME","arguments":{...}}</tool_call>
 and nothing else. After the tool results arrive (as "[tool result …]" messages) answer the user normally, WITHOUT tool_call blocks. If no tool is needed, just answer.
-Available tools (JSON schema):
-${tools.map((t) => JSON.stringify({ name: t.name, description: t.description, parameters: t.parameters })).join('\n')}`;
+Tools:
+${tools.map(compactTool).join('\n')}`;
 }
 
 function parseToolBlocks(text: string): { text: string; calls: { name: string; args: Record<string, any> }[] } {
@@ -83,6 +92,14 @@ function parseToolBlocks(text: string): { text: string; calls: { name: string; a
 export class OllamaProvider implements AIProvider {
   readonly name = 'ollama';
   constructor(private baseUrl: string) {}
+
+  /** Load the model into memory now (first real request would otherwise wait ~30 s). */
+  async warmUp(model: string) {
+    try {
+      await fetch(`${this.baseUrl}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(120_000),
+        body: JSON.stringify({ model, stream: false, keep_alive: '30m', options: { num_predict: 1 }, messages: [{ role: 'user', content: 'hi' }] }) });
+    } catch { /* optional */ }
+  }
 
   private wire(msgs: ChatMsg[], promptTools: boolean) {
     const out: any[] = [];
@@ -116,8 +133,9 @@ export class OllamaProvider implements AIProvider {
 
   async complete(p: CompleteParams): Promise<CompleteResult> {
     const hasTools = !!p.tools?.length;
+    // keep_alive keeps the model in memory; do not vary num_ctx between requests (a change forces a ~30 s reload).
     const options = { num_predict: p.maxTokens ?? 1024, temperature: 0.3 };
-    const base = { model: p.model, stream: false, options, ...(p.json ? { format: 'json' } : {}) };
+    const base = { model: p.model, stream: false, keep_alive: '30m', options, ...(p.json ? { format: 'json' } : {}) };
 
     if (hasTools && !noToolSupport.has(p.model)) {
       try {

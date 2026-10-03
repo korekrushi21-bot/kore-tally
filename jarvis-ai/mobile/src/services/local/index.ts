@@ -20,6 +20,18 @@ export async function localAssistant(raw: string, lang: L, s: Settings): Promise
   const text = ascii(raw.trim());
   const t = text.toLowerCase();
 
+  // ---- instant small talk (no AI wait) ----
+  const name = s.assistantName || 'JARVIS';
+  const tt = t.replace(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig'), ' ').replace(/(जार्विस|जारविस)/g, ' ').replace(/[,.!?।]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (/^(hi|hello|hey|namaste|namaskar|good (morning|afternoon|evening)|नमस्कार|नमस्ते|हॅलो|हेलो|हाय|सुप्रभात|सुप्रभाते)$/.test(tt))
+    return { text: say(lang, `Hello! How can I help you?`, `नमस्कार! मी तुमची काय मदत करू?`, `नमस्ते! मैं आपकी क्या मदद करूँ?`) };
+  if (/(who are you|your name|what are you|तू कोण|तुम्ही कोण|तुम कौन|आप कौन|तुझं नाव|तुमचं नाव|तुझे नाव|आपका नाम|तेरा नाम|तुम्हारा नाम)/.test(tt))
+    return { text: say(lang, `I am ${name}, your personal voice assistant.`, `मी ${name}, तुमचा वैयक्तिक व्हॉइस असिस्टंट आहे.`, `मैं ${name}, आपका निजी वॉइस असिस्टेंट हूँ।`) };
+  if (/(how are you|कसा आहेस|कसे आहात|कसा आहेस|कैसे हो|कैसे हैं|कैसा है)/.test(tt))
+    return { text: say(lang, `I am doing well, thank you. How can I help?`, `मी छान आहे, धन्यवाद. मी काय मदत करू?`, `मैं ठीक हूँ, धन्यवाद। मैं क्या मदद करूँ?`) };
+  if (/^(thanks|thank you|thank you very much|thanks a lot|आभार|आभारी आहे|धन्यवाद|शुक्रिया|थँक्स|थैंक्यू|थँक यू)$/.test(tt))
+    return { text: say(lang, `You are welcome!`, `तुमचे स्वागत आहे!`, `आपका स्वागत है!`) };
+
   // ---- maths: "18% of 25000", "25000 चं 18 टक्के", "12*(3+4)" ----
   const pct = t.match(/(\d+(?:\.\d+)?)\s*(?:%|percent|टक्के|प्रतिशत)\s*(?:of|च[ंं्]?|का)?\s*(\d+(?:\.\d+)?)/)
     ?? null;

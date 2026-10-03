@@ -23,6 +23,9 @@ export const config = {
   visionModel: env.VISION_MODEL ?? '',
 
   searchApiKey: env.SEARCH_API_KEY ?? '', // Tavily (optional, has a free tier)
+  /** Read-only PC access (files/system info). Folders separated by ; (default Desktop, Documents, Downloads). */
+  pcReadEnabled: (env.PC_READ_ENABLED ?? 'true').toLowerCase() !== 'false',
+  pcReadFolders: (env.PC_READ_FOLDERS ?? '').split(';').map((s) => s.trim()).filter(Boolean),
   searxngUrl: (env.SEARXNG_URL ?? '').replace(/\/+$/, ''), // optional self-hosted metasearch (free)
   ttsApiKey: env.TTS_API_KEY ?? '',       // reserved: cloud TTS (optional)
   sttApiKey: env.STT_API_KEY ?? '',       // reserved: cloud STT (optional)

@@ -10,7 +10,7 @@ import { MessageBubble } from '../components/MessageBubble';
 const STATUS = { idle: 'Ready', listening: 'Listening…', thinking: 'Thinking…', speaking: 'Speaking…', processing: 'Processing…' } as const;
 
 export default function HomeScreen({ navigation }: any) {
-  const { colors, settings, updateSettings, state, level, partial, pending, setPending, startVoice, cancel, send, messages, error, clearError, wakeActive } = useAssistant();
+  const { colors, settings, updateSettings, state, level, partial, pending, setPending, startVoice, cancel, send, messages, error, clearError, wakeActive, wakeHeard, wakeListening, retryWake } = useAssistant();
   const [text, setText] = useState('');
   const [typing, setTyping] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -24,6 +24,7 @@ export default function HomeScreen({ navigation }: any) {
   }, [pending, editing, send]);
 
   const last = messages.filter((m) => m.role === 'assistant').slice(-1)[0];
+  const lastUser = messages.filter((m) => m.role === 'user').slice(-1)[0];
   const submit = () => { if (text.trim()) { void send(text); setText(''); setTyping(false); } };
 
   return (
@@ -42,9 +43,20 @@ export default function HomeScreen({ navigation }: any) {
         <View style={{ alignItems: 'center', marginTop: 4 }}>
           <AICore state={state} level={level} size={220} />
           <Text style={{ color: colors.accent, fontSize: 18, letterSpacing: 2, marginTop: -30 }}>{STATUS[state]}</Text>
-          <Pressable onPress={() => updateSettings({ alwaysOn: !settings.alwaysOn })} accessibilityLabel="Toggle always on">
-            <T size={12} style={{ color: wakeActive ? colors.ok : colors.sub }}>{wakeActive ? `● ${settings.assistantName} ON — say “${settings.wakeWord}”` : '○ Always-on is off (tap to turn on)'}</T>
+          <Pressable onPress={() => { if (settings.alwaysOn && (!wakeActive || !wakeListening)) retryWake(); else updateSettings({ alwaysOn: !settings.alwaysOn }); }} accessibilityLabel="Toggle always on">
+            <T size={12} style={{ color: wakeActive ? colors.ok : colors.sub }}>{wakeActive && wakeListening ? `● ${settings.assistantName} ON — say “${settings.wakeWord}”` : settings.alwaysOn ? '🎙 Tap here to start the microphone (allow it when asked)' : '○ Always-on is off (tap to turn on)'}</T>
           </Pressable>
+          {wakeActive && state === 'idle' && <T sub size={10}>{wakeListening ? '👂 listening' : '… microphone not started yet'}{wakeHeard ? ` · heard: “${wakeHeard.slice(-60)}”` : ''}</T>}
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+            {([['auto', 'Auto'], ['mr', 'मराठी'], ['hi', 'हिंदी'], ['en', 'English']] as const).map(([code, label]) => (
+              <Pressable key={code} onPress={() => updateSettings({ language: code })} accessibilityLabel={`Language ${label}`}
+                style={{ paddingVertical: 4, paddingHorizontal: 12, borderRadius: 14, backgroundColor: settings.language === code ? colors.accent : colors.panel }}>
+                <T size={12} style={{ color: settings.language === code ? '#04121c' : colors.text }}>{label}</T>
+              </Pressable>
+            ))}
+          </View>
+          {settings.language === 'auto' && <T sub size={10}>Auto listens in English. For मराठी/हिंदी speech choose that language.</T>}
+          {(settings.language === 'mr' || settings.language === 'hi') && <T sub size={10}>Say “Hey JARVIS” (English), pause, then ask in {settings.language === 'mr' ? 'मराठी' : 'हिंदी'}.</T>}
           <Waveform state={state} level={level} />
         </View>
 
@@ -64,6 +76,7 @@ export default function HomeScreen({ navigation }: any) {
             </Glass>
           )}
           {error && !last?.error && <Pressable onPress={clearError}><Glass style={{ borderColor: colors.err }}><T style={{ color: colors.err }}>{error}</T></Glass></Pressable>}
+          {!pending && lastUser && state !== 'listening' && <T sub size={12} style={{ textAlign: 'center' }}>🎙 {lastUser.text}</T>}
           {!pending && last && state !== 'listening' && (
             <Pressable onPress={() => navigation.navigate('Chat')} style={{ maxHeight: 220 }}>
               <MessageBubble m={last} isLast={false} />

@@ -1,6 +1,7 @@
 import { db } from '../database/db.js';
 import type { ToolDef } from '../ai/types.js';
 import { calculate } from './calc.js';
+import { PcError, findFiles, listFolder, readTextFile, systemInfo } from './pc.js';
 import { searchWeb, type SearchOutput, type SearchResult } from './search.js';
 
 export interface ToolContext {
@@ -8,6 +9,8 @@ export interface ToolContext {
   location?: { lat: number; lon: number; name?: string };
   sources: { title: string; url: string }[];
   signal?: AbortSignal;
+  /** read-only PC tools allowed for this request (local request + local AI only) */
+  pcAllowed?: boolean;
 }
 
 const str = { type: 'string' };
@@ -20,6 +23,10 @@ export const SERVER_TOOLS: ToolDef[] = [
   { name: 'getWeather', description: 'Get current weather and forecast. Provide a city name, or omit to use the device location if shared.', parameters: obj({ city: str, days: { type: 'number' } }) },
   { name: 'getTime', description: 'Get the current date and time (optionally for an IANA timezone).', parameters: obj({ timezone: str }) },
   { name: 'calculate', description: 'Evaluate an arithmetic expression exactly. E.g. "25000*18/100". Use for ALL maths.', parameters: obj({ expression: str }, ['expression']) },
+  { name: 'listFolder', description: 'List files and folders in a folder on this PC (read-only). Folder may be Desktop, Documents, Downloads or a path inside them.', parameters: obj({ path: str }) },
+  { name: 'findFiles', description: 'Find files on this PC by part of the file name (read-only).', parameters: obj({ query: str, folder: str }, ['query']) },
+  { name: 'readTextFile', description: 'Read the beginning of a plain text file on this PC (read-only).', parameters: obj({ path: str }, ['path']) },
+  { name: 'systemInfo', description: 'Get this computer information: CPU, RAM, free disk space, uptime (read-only).', parameters: obj({}) },
   { name: 'searchProducts', description: 'Look up products in the Kore Krushi Seva Kendra shop catalogue (availability comes ONLY from this tool).', parameters: obj({ query: str, category: str }) },
 ];
 
@@ -86,9 +93,13 @@ const TRIGGERS: Record<string, RegExp> = {
   searchWeb: /(search|google|internet|online|latest|current|price|rate|market|mandi|bhav|news|who is|find out|शोध|इंटरनेट|भाव|बाजार|बातम्या|ताज्या|खबर|मंडी|खोज)/i,
   getNews: /(news|headline|बातम्या|खबर|समाचार)/i,
   getWeather: /(weather|rain|temperature|forecast|humid|umbrella|हवामान|पाऊस|तापमान|मौसम|बारिश|उन्ह|ऊन)/i,
-  getTime: /(what time|current time|time now|today'?s date|what day|वेळ|तारीख|समय|वाजले|कितने बजे)/i,
+  getTime: /(what time|current time|time now|today'?s date|what day|आत्ताची वेळ|वेळ काय|आजची तारीख|तारीख काय|समय क्या|आज की तारीख|वाजले|कितने बजे)/i,
   calculate: /(calculat|percent|%|\d\s*[-+*/x×÷^]\s*\d|गणित|टक्के|प्रतिशत|जोड|वजा|गुणा|भाग)/i,
   searchProducts: /(shop|store|stock|available|product|fungicide|herbicide|pesticide|insecticide|fertili[sz]er|seed|दुकान|उत्पादन|तणनाशक|फंगीसाइड|कीटकनाशक|खत|बियाणे|उपलब्ध|दवा)/i,
+  listFolder: /(folder|directory|list (the )?files|files (in|on)|what'?s in my|desktop|documents|downloads|फोल्डर|फाईल्स|फाइलें|डेस्कटॉप|डाउनलोड)/i,
+  findFiles: /(find|search|locate|where is).*(file|document|pdf|excel|word)|(file|फाईल|फाइल).*(शोध|कुठे|कहाँ|खोज)/i,
+  readTextFile: /(read|open|show|summari[sz]e|what'?s in).*(file|\.txt|\.md|\.csv|\.log|\.json|note)|(फाईल|फाइल).*(वाच|उघड|दाखव|पढ़|खोल)/i,
+  systemInfo: /(system info|my (pc|computer|laptop)|computer|ram|memory|disk|storage|free space|cpu|processor|uptime|संगणक|कॉम्प्युटर|रॅम|स्टोरेज|डिस्क|जागा|मेमरी)/i,
   createReminder: /(remind|reminder|आठवण|याद दिला|याद दिलाओ)/i,
   setAlarm: /(alarm|wake me|अलार्म|गजर)/i,
   createCalendarEvent: /(calendar|meeting|appointment|schedule|event|कॅलेंडर|भेट|मीटिंग|कार्यक्रम)/i,
@@ -98,8 +109,9 @@ const TRIGGERS: Record<string, RegExp> = {
   sendMessage: /(message|whatsapp|sms|text him|text her|मेसेज|संदेश|पाठव|भेज)/i,
   cameraScan: /(photo|scan|camera|crop|disease|pest|leaf|फोटो|पीक|रोग|कीड|पान)/i,
 };
-export function selectTools(text: string): ToolDef[] {
-  return [...SERVER_TOOLS, ...CLIENT_TOOLS].filter((t) => TRIGGERS[t.name]?.test(text));
+export const PC_TOOL_NAMES = new Set(['listFolder', 'findFiles', 'readTextFile', 'systemInfo']);
+export function selectTools(text: string, pcAllowed = false): ToolDef[] {
+  return [...SERVER_TOOLS, ...CLIENT_TOOLS].filter((t) => TRIGGERS[t.name]?.test(text) && (pcAllowed || !PC_TOOL_NAMES.has(t.name)));
 }
 
 /** Runs a server tool. Always returns JSON-serialisable data; failures become {error} so the model reports them honestly. */
@@ -116,6 +128,15 @@ export async function runServerTool(name: string, args: Record<string, any>, ctx
         catch { return { error: 'Unknown timezone' }; }
       }
       case 'calculate': return { expression: args.expression, result: calculate(String(args.expression ?? '')) };
+      case 'listFolder': case 'findFiles': case 'readTextFile': case 'systemInfo': {
+        if (!ctx.pcAllowed) return { error: 'PC access is off for this connection (only the app on this PC with local AI may read files).' };
+        try {
+          if (name === 'listFolder') return listFolder(args.path);
+          if (name === 'findFiles') return findFiles(String(args.query ?? ''), args.folder);
+          if (name === 'readTextFile') return readTextFile(String(args.path ?? ''));
+          return systemInfo();
+        } catch (e) { ok = false; return { error: e instanceof PcError ? e.message : 'Could not read that.' }; }
+      }
       case 'searchProducts': return { source: 'shop database', products: searchProducts(args.query, args.category) };
       default: ok = false; return { error: `Unknown tool ${name}` };
     }
