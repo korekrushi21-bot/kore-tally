@@ -52,9 +52,12 @@ function App() {
   return (
     <>
       <div className="app-header">
-        <div>
-          <h1>Upstox AI Smart Trader</h1>
-          <div className="subtitle">Paper trading by default. Live trading exists but is off unless explicitly enabled.</div>
+        <div className="brand">
+          <img src="/favicon.svg" alt="" width={36} height={36} />
+          <div>
+            <h1>Upstox AI Smart Trader</h1>
+            <div className="subtitle">Paper trading by default. Live trading exists but is off unless explicitly enabled.</div>
+          </div>
         </div>
         <StatusBar status={authStatus} onDisconnect={disconnect} />
       </div>
