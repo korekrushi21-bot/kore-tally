@@ -6,3 +6,8 @@ backend/.pytest_cache/
 backend/venv/
 backend/.venv/
 *.pyc
+# SQLite DB can land here too if a dev server is ever launched with a cwd
+# other than backend/ (e.g. from a launcher script's working directory).
+upstox_trader.db
+dashboard/node_modules/
+dashboard/dist/
