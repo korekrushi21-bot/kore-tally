@@ -1,0 +1,25 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: trader
+      POSTGRES_PASSWORD: trader
+      POSTGRES_DB: upstox_trader
+    ports:
+      - "5432:5432"
+    volumes:
+      - upstox_pgdata:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8010:8000"
+    depends_on:
+      - db
+
+volumes:
+  upstox_pgdata:

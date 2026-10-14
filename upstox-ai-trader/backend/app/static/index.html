@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Upstox AI Smart Trader — Connection Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; color: #222; }
+    button { margin: 4px; padding: 8px 14px; cursor: pointer; }
+    pre { background: #f4f4f4; padding: 12px; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; }
+    .status { font-weight: 600; }
+    .connected { color: #0a7a2f; }
+    .disconnected { color: #b00020; }
+  </style>
+</head>
+<body>
+  <h2>Upstox AI Smart Trader</h2>
+  <p>Manual smoke-test page. Phase 1: OAuth connect + authorized read-only data fetch.
+     Phase 2: strategy signals + risk-managed PAPER trading (no real orders).</p>
+
+  <p>Status: <span id="status" class="status disconnected">checking…</span></p>
+
+  <button onclick="location.href='/auth/login'">Connect Upstox Account</button>
+  <button onclick="disconnect()">Disconnect</button>
+  <hr />
+  <button onclick="call('/market/profile')">Get Profile</button>
+  <button onclick="call('/market/holdings')">Get Holdings</button>
+  <button onclick="call('/market/positions')">Get Positions</button>
+  <button onclick="call('/market/funds')">Get Funds &amp; Margin</button>
+  <button onclick="call('/market/orders')">Get Order Book</button>
+  <hr />
+  <p>Instrument key (e.g. <code>NSE_EQ|INE002A01018</code>):
+    <input id="instrument" type="text" size="28" value="NSE_EQ|INE002A01018" />
+  </p>
+  <button onclick="call('/strategy/signal?instrument_key=' + encodeURIComponent(instrumentKey()))">Get Signal</button>
+  <button onclick="call('/paper/evaluate?instrument_key=' + encodeURIComponent(instrumentKey()), 'POST')">Evaluate &amp; Paper-Trade</button>
+  <br />
+  <button onclick="call('/paper/account')">Get Paper Account</button>
+  <button onclick="call('/paper/positions')">Get Paper Positions</button>
+  <button onclick="call('/paper/stop-all', 'POST', {})">Emergency Stop All</button>
+  <button onclick="call('/paper/resume', 'POST')">Resume Trading</button>
+
+  <pre id="output">(responses will appear here)</pre>
+
+  <script>
+    async function refreshStatus() {
+      const res = await fetch('/auth/status');
+      const body = await res.json();
+      const el = document.getElementById('status');
+      if (body.connected) {
+        el.textContent = `connected (user ${body.upstox_user_id}, token expires ${body.token_expires_at})`;
+        el.className = 'status connected';
+      } else {
+        el.textContent = body.reason || 'not connected';
+        el.className = 'status disconnected';
+      }
+    }
+
+    function instrumentKey() {
+      return document.getElementById('instrument').value;
+    }
+
+    async function call(path, method = 'GET', jsonBody = undefined) {
+      const opts = { method };
+      if (jsonBody !== undefined) {
+        opts.headers = { 'Content-Type': 'application/json' };
+        opts.body = JSON.stringify(jsonBody);
+      }
+      const res = await fetch(path, opts);
+      const body = await res.json();
+      document.getElementById('output').textContent = JSON.stringify(body, null, 2);
+      if (res.status === 401) refreshStatus();
+    }
+
+    async function disconnect() {
+      await fetch('/auth/disconnect', { method: 'POST' });
+      refreshStatus();
+    }
+
+    refreshStatus();
+  </script>
+</body>
+</html>
