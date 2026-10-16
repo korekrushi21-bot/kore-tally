@@ -45,7 +45,7 @@ def build_import_xml(company: str, spec: VoucherSpec, v: Dict[str, Any]) -> str:
             # batch-wise item: one allocation per real batch (quantity and amount split; the last batch takes the paise)
             parts = split_amount(it["amount"], [b["quantity"] for b in batches])
             batch_xml = "".join(f"""
-       <BATCHALLOCATIONS.LIST>{(chr(10) + '        <GODOWNNAME>' + _esc(b['godown']) + '</GODOWNNAME>') if b.get('godown') else ''}
+       <BATCHALLOCATIONS.LIST>{(chr(10) + '        <GODOWNNAME>' + _esc(b.get('godown') or it.get('godown') or v.get('default_godown')) + '</GODOWNNAME>') if (b.get('godown') or it.get('godown') or v.get('default_godown')) else ''}
         <BATCHNAME>{_esc(b['batch'])}</BATCHNAME>
         <INDENTNO>Not Applicable</INDENTNO>
         <ORDERNO>Not Applicable</ORDERNO>
@@ -57,8 +57,9 @@ def build_import_xml(company: str, spec: VoucherSpec, v: Dict[str, Any]) -> str:
         <BATCHRATE>{money(it['rate'])}/{_esc(it['unit'])}</BATCHRATE>
        </BATCHALLOCATIONS.LIST>""" for b, part in zip(batches, parts))
         else:
+            godown_xml = (chr(10) + '        <GODOWNNAME>' + _esc(it.get('godown') or v.get('default_godown')) + '</GODOWNNAME>') if (it.get('godown') or v.get('default_godown')) else ''
             batch_xml = f"""
-       <BATCHALLOCATIONS.LIST>
+       <BATCHALLOCATIONS.LIST>{godown_xml}
         <BATCHNAME>Primary Batch</BATCHNAME>
         <INDENTNO>Not Applicable</INDENTNO>
         <ORDERNO>Not Applicable</ORDERNO>

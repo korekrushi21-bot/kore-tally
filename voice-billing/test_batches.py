@@ -130,6 +130,7 @@ class FakeTally:
                 "Purchase Accounts": [Ledger("Purchase A/c", group, 0)],
                 "Duties & Taxes": [Ledger("CGST", group, 0), Ledger("SGST", group, 0)]}.get(group, [])
 
+    def get_godowns(self): return ["G1", "G2"]
     def get_ledgers(self): return [Ledger("R/o", "x", 0), Ledger("Real Party", "x", 0)]
     def get_stock_items(self):
         return [StockItem("ITEM B", "Pesticides", "Nos", self.closing, 0, 100.0, True), StockItem("ITEM N", "FERTILIZERS", "Bag", 50, 0, 10.0, False)]
@@ -160,13 +161,42 @@ CONFIG = {
 }
 
 
+class GodownRule(unittest.TestCase):
+    def draft(self, items):
+        svc = VoucherService(FakeTally(), CONFIG, tempfile.mkdtemp())
+        return svc, svc.draft("sales", "real party", items)
+
+    def test_missing_godown_is_asked_with_the_choices(self):
+        with self.assertRaises(VoucherError) as cm:
+            self.draft([{"name": "item n", "quantity": 1}])
+        self.assertEqual(cm.exception.code, "godown_missing")
+        self.assertIn("G1", cm.exception.message); self.assertIn("G2", cm.exception.message)
+
+    def test_unknown_godown_is_refused(self):
+        with self.assertRaises(VoucherError):
+            self.draft([{"name": "item n", "quantity": 1, "godown": "Nowhere"}])
+
+    def test_normal_item_gets_its_godown_in_the_xml(self):
+        svc, view = self.draft([{"name": "item n", "quantity": 1, "godown": "g2"}])
+        xml = build_import_xml("", get_spec("sales"), svc._drafts[view["draft_id"]])
+        self.assertEqual(ET.fromstring(xml).findtext(".//BATCHALLOCATIONS.LIST/GODOWNNAME"), "G2")
+        self.assertEqual(ET.fromstring(xml).findtext(".//BATCHALLOCATIONS.LIST/BATCHNAME"), "Primary Batch")
+
+    def test_batch_item_only_takes_batches_of_the_chosen_godown(self):
+        svc, view = self.draft([{"name": "item b", "quantity": 2, "godown": "G1"}])
+        self.assertTrue(all(b["godown"] == "G1" for b in view["items"][0]["batches"]))
+        with self.assertRaises(VoucherError) as cm:
+            self.draft([{"name": "item b", "quantity": 2, "godown": "G2"}])
+        self.assertEqual(cm.exception.code, "insufficient_stock")
+
+
 class Service(unittest.TestCase):
     def svc(self, tally=None, policy="auto"):
         cfg = {**CONFIG, "billing": {**CONFIG["billing"], "batch_policy": policy}}
         return VoucherService(tally or FakeTally(), cfg, tempfile.mkdtemp())
 
     def draft(self, svc, items, vtype="sales"):
-        return svc.draft(vtype, "real party", items)
+        return svc.draft(vtype, "real party", [{"godown": "G1", **i} for i in items])
 
     def test_voice_bill_with_a_batch_item_picks_the_batch_from_tally_data(self):
         # batch 124 has 16 left, batch 130 has 6 (expiry 2027): FEFO picks 130 first, then 124

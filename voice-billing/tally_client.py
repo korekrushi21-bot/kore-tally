@@ -262,6 +262,14 @@ class TallyClient:
             return out
         return self._cached("party_gst", load)
 
+    def get_godowns(self) -> List[str]:
+        """Names of the godowns (one small read-only request)."""
+        def load():
+            xml = self._make_collection_request("VoiceBillingGodowns", "Godown", ["NAME"])
+            rows = self._parse_collection(self._post_xml(xml), "Godown")
+            return [n for n in ((r.attrib.get("NAME") or r.findtext("NAME", "")).strip() for r in rows) if n]
+        return self._cached("godowns", load)
+
     def get_stock_items(self) -> List[StockItem]:
         def load():
             xml = self._make_collection_request(

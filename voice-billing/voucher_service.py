@@ -170,14 +170,30 @@ class VoucherService:
                 last_error = err
         raise last_error  # type: ignore[misc]
 
-    def _pick_batches(self, spec: VoucherSpec, item: Any, qty: float, wanted: Optional[str], on: date, warnings: List[str]) -> List[Dict[str, Any]]:
+    def _resolve_godown(self, spoken: Optional[str], godowns: List[str], name: str) -> str:
+        """The godown a line goes in/out of. Tally rejects a line without one, so the owner is asked when it is missing."""
+        spoken = (spoken or self.config.get("billing", {}).get("default_godown") or "").strip()
+        if not spoken:
+            if len(godowns) == 1:
+                return godowns[0]
+            raise VoucherError("godown_missing", f"'{name}' कोणत्या godown मधून? " + ", ".join(godowns) + ".", godowns)
+        return self._resolve("godown", spoken, godowns)
+
+    def _pick_batches(self, spec: VoucherSpec, item: Any, qty: float, wanted: Optional[str], on: date, warnings: List[str], godown: str = "") -> List[Dict[str, Any]]:
         """Batches for one bill line of a batch-wise item."""
         if spec.stock_in:   # purchase / sales return: stock comes IN, so the owner has to give the batch (and expiry)
             if not wanted:
                 raise VoucherError("batch_required", f"'{item.name}' ला batch लागतो; {spec.label_mr} साठी batch क्रमांक सांगा.")
-            return [{"batch": str(wanted).strip(), "godown": "", "quantity": qty, "expiry": ""}]
+            return [{"batch": str(wanted).strip(), "godown": godown, "quantity": qty, "expiry": ""}]
         try:
-            picks = allocate(self._batch_balances(item), qty, on, wanted, item.name)
+            balances = self._batch_balances(item)
+            if godown:
+                live = [b for b in balances if b.qty > 0]
+                if live and all(b.godown for b in live):      # godown-wise stock is known: use only this godown's batches
+                    balances = [b for b in balances if b.godown.lower() == godown.lower()]
+                else:
+                    warnings.append(f"{item.name}: batch निवडताना godown-wise शिल्लक तपासता आली नाही; बिलातला godown '{godown}' आहे.")
+            picks = allocate(balances, qty, on, wanted, item.name)
         except BatchError as err:
             raise VoucherError(err.code, err.message) from None
         for p in picks:
@@ -304,17 +320,19 @@ class VoucherService:
         batch_policy = self.config.get("billing", {}).get("batch_policy", "refuse")
         default_incl = bool(self.config.get("billing", {}).get("spoken_rate_includes_gst", False)) if rate_includes_gst is None else bool(rate_includes_gst)
 
+        godowns = self.tally.get_godowns()
         for raw in items:
             name = self._resolve("माल", raw.get("name", ""), stock_names)
             qty = self._number(raw.get("quantity"), "नग")
             unit = stock[name].unit
             if not unit or "not applicable" in unit.lower():
                 raise VoucherError("not_stock_item", f"'{name}' हा मोजला जाणारा माल नाही; हे बिल Tally मध्ये हाताने करा.")
+            godown = self._resolve_godown(raw.get("godown"), godowns, name)
             batches = None
             if stock[name].batch_wise:
                 if batch_policy != "auto":
                     raise VoucherError("batch_item", f"'{name}' ला batch लागतो; batch निवडावा लागतो म्हणून हा माल Tally मध्ये हाताने करा.")
-                batches = self._pick_batches(spec, stock[name], qty, raw.get("batch"), v_date, warnings)
+                batches = self._pick_batches(spec, stock[name], qty, raw.get("batch"), v_date, warnings, godown)
             line_ledger = self.resolve_line_ledger(spec, stock[name])
             gst_percent = self.item_gst_percent(name, raw.get("gst_percent"), spec, party_name) if gst_on else 0.0
 
@@ -337,7 +355,7 @@ class VoucherService:
             if amount > MAX_LINE_AMOUNT:
                 raise VoucherError("amount_too_large", f"{name} ची रक्कम {_inr(amount)} खूप मोठी आहे; नग/दर तपासा.")
             lines.append({"name": name, "unit": unit, "quantity": qty, "rate": rate, "rate_source": rate_source,
-                          "amount": amount, "gst_percent": gst_percent, "ledger": line_ledger, "batches": batches})
+                          "amount": amount, "gst_percent": gst_percent, "ledger": line_ledger, "batches": batches, "godown": godown})
 
         taxes = self._compute_taxes(spec, party_name, lines)
         taxable = round(sum(l["amount"] for l in lines), 2)
@@ -362,7 +380,8 @@ class VoucherService:
             "party": party_name, "date": v_date.strftime("%Y%m%d"), "gst_header": self._gst_header(party_name),
             "narration": narration.strip() or f"Voice billing ({source})",
             "items": lines, "taxes": taxes, "round_off": round_off, "taxable_total": taxable, "tax_total": tax_total,
-            "total": total, "warnings": warnings, "status": "drafted", "created_at": time.time(), "source": source,
+            "total": total, "warnings": warnings, "default_godown": str(self.config.get("billing", {}).get("default_godown", "")).strip(),
+            "status": "drafted", "created_at": time.time(), "source": source,
         }
         with self._lock:
             self._purge()
@@ -442,7 +461,7 @@ class VoucherService:
             "ok": True, "draft_id": record["draft_id"], "voucher_type": spec.key, "label": spec.label_mr,
             "party": record["party"], "date": record["date"],
             "items": [{**{k: l[k] for k in ("name", "unit", "quantity", "rate", "rate_source", "amount", "gst_percent", "ledger")},
-                       "batches": l.get("batches") or []} for l in record["items"]],
+                       "batches": l.get("batches") or [], "godown": l.get("godown", "")} for l in record["items"]],
             "round_off": record["round_off"]["amount"] if record.get("round_off") else 0.0,
             "taxes": [{"head": t["head"], "rate": t["rate"], "ledger": t["ledger"], "amount": t["amount"]} for t in record["taxes"]],
             "taxable_total": record["taxable_total"], "tax_total": record["tax_total"], "total": record["total"],
@@ -459,7 +478,7 @@ class VoucherService:
                                    for b in l["batches"]) + ")"
 
         lines = "; ".join(
-            f"{l['name']} {l['quantity']:g} {l['unit']}{batch_text(l)} दर {_inr(l['rate'])}"
+            f"{l['name']} {l['quantity']:g} {l['unit']}{(' godown ' + l['godown']) if l.get('godown') else ''}{batch_text(l)} दर {_inr(l['rate'])}"
             + ("" if l["rate_source"] == "spoken" else " (मागचा दर)")
             for l in record["items"]
         )
