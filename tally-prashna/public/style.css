@@ -1,0 +1,91 @@
+:root {
+  --bg: #f4f5f2;
+  --panel: #ffffff;
+  --text: #1d2420;
+  --muted: #66706a;
+  --accent: #1f7a4d;
+  --accent-soft: #e3f2ea;
+  --border: #dde1dc;
+  --warn: #9a5b00;
+  --bad: #b3261e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #151916;
+    --panel: #1e2420;
+    --text: #e6ebe7;
+    --muted: #98a39c;
+    --accent: #4cc38a;
+    --accent-soft: #1d3328;
+    --border: #2f3832;
+    --warn: #f0b35a;
+    --bad: #ff8a80;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  display: flex; flex-direction: column;
+  background: var(--bg); color: var(--text);
+  font: 15px/1.5 "Segoe UI", "Nirmala UI", system-ui, sans-serif;
+}
+header {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.title { font-weight: 600; font-size: 17px; }
+.sub { font-weight: 400; font-size: 12px; color: var(--muted); margin-left: 8px; }
+.status { display: flex; gap: 8px; align-items: center; }
+.pill {
+  font-size: 12px; padding: 3px 10px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--muted);
+}
+.pill.ok { color: var(--accent); border-color: var(--accent); }
+.pill.bad { color: var(--bad); border-color: var(--bad); }
+.toggle { cursor: pointer; display: flex; gap: 4px; align-items: center; }
+button {
+  font: inherit; cursor: pointer; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text);
+  padding: 4px 10px;
+}
+button:hover { border-color: var(--accent); }
+
+#chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.msg { flex-shrink: 0; max-width: 100%; padding: 10px 14px; border-radius: 12px; overflow-x: auto; }
+.msg p { margin: 0 0 6px; }
+.msg p:last-child { margin-bottom: 0; }
+.user { align-self: flex-end; background: var(--accent); color: #fff; max-width: 75%; }
+.bot { align-self: flex-start; background: var(--panel); border: 1px solid var(--border); width: 100%; }
+.meta { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.warn { color: var(--warn); }
+.error { color: var(--bad); }
+.examples { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.examples button { background: var(--accent-soft); border-color: transparent; font-size: 13px; }
+
+table { border-collapse: collapse; margin: 8px 0; font-size: 13.5px; width: 100%; }
+th, td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; vertical-align: top; }
+th { background: var(--accent-soft); font-weight: 600; }
+tr.total td { font-weight: 700; background: var(--accent-soft); border-top: 2px solid var(--accent); }
+td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+h4 { margin: 10px 0 4px; font-size: 14px; }
+
+form { display: flex; gap: 8px; padding: 12px 16px; background: var(--panel); border-top: 1px solid var(--border); }
+#question {
+  flex: 1; font: inherit; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text);
+}
+#question:focus { outline: 2px solid var(--accent); border-color: transparent; }
+#askBtn { background: var(--accent); color: #fff; border: none; padding: 0 18px; }
+.actions { margin-top: 8px; display: flex; justify-content: flex-end; }
+.actions button { font-size: 13px; padding: 3px 12px; }
+.thinking { color: var(--muted); font-style: italic; }
+
+/* voice (mic + spoken answers) */
+#micBtn { font-size: 20px; padding: 0 14px; border-radius: 10px; }
+#micBtn.on { background: var(--bad); color: #fff; animation: tpPulse 1s infinite; }
+@keyframes tpPulse { 50% { opacity: .55; } }
+#voiceBar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 6px 16px 10px; background: var(--panel); font-size: 13px; }
+#voiceBar label { display: flex; gap: 4px; align-items: center; cursor: pointer; }
+#voiceBar select { font: inherit; padding: 3px 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+#voiceMsg { margin: 0; }
