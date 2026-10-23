@@ -1,0 +1,10 @@
+{
+  "tally": {
+    "host": "localhost",
+    "port": 9000,
+    "company": ""
+  },
+  "port": 4100,
+  "defaultLookbackDays": 730,
+  "anthropicApiKey": ""
+}
