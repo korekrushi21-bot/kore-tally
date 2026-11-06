@@ -11,6 +11,9 @@ Oct 2026:
   - Order book:  GET  /v2/order/retrieve-all
   - Order detail: GET /v2/order/details?order_id=...
   - LTP:         GET  /v3/market-quote/ltp?instrument_key=...
+  - Option contracts: GET /v2/option/contract?instrument_key=<UNDERLYING key>[&expiry_date=YYYY-MM-DD]
+    (verified Nov 2026; returns active CE/PE contracts with strike_price, expiry
+    YYYY-MM-DD, lot_size, instrument_key "NSE_FO|...", trading_symbol)
   - Historical candles: GET /v3/historical-candle/{instrument_key}/{unit}/{interval}/{to_date}[/{from_date}]
   - Intraday candles:   GET /v3/historical-candle/intraday/{instrument_key}/{unit}/{interval}
     `unit` is one of "minutes" | "days" | "weeks" | "months"; `interval` is an
@@ -82,6 +85,12 @@ class UpstoxClient:
 
     async def get_ltp(self, instrument_keys: list[str]) -> dict:
         return await self._get("/v3/market-quote/ltp", params={"instrument_key": ",".join(instrument_keys)})
+
+    async def get_option_contracts(self, underlying_key: str, expiry_date: str | None = None) -> dict:
+        params = {"instrument_key": underlying_key}
+        if expiry_date:
+            params["expiry_date"] = expiry_date
+        return await self._get("/v2/option/contract", params=params)
 
     async def get_historical_candles(
         self, instrument_key: str, unit: str, interval: int, to_date: str, from_date: str | None = None

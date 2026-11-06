@@ -1,12 +1,12 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.time_utils import today_ist
-from app.db.models import DailyRiskState, PaperAccount, PaperPosition
-from app.engine import costs
+from app.db.models import DailyRiskState, PaperAccount, PaperOptionLeg, PaperPosition
+from app.engine import costs, options
 from app.engine.risk import AccountSnapshot, RiskManager
 from app.engine.strategy import Signal
 from app.services import audit
@@ -106,9 +106,180 @@ def evaluate_and_execute_signal(db: Session, signal: Signal, current_price: floa
     return {"action": "opened", "position": position_dict(position), "max_loss_amount": decision.max_loss_amount}
 
 
+def evaluate_and_execute_option_signal(
+    db: Session,
+    signal: Signal,
+    contract: options.OptionContract,
+    premium: float,
+    spot: float | None = None,
+    as_of: date | None = None,
+) -> dict:
+    """Turns an UNDERLYING signal into a bought CE (BUY signal) or PE (SELL
+    signal) paper position, sized in whole lots. See app/engine/options.py.
+    """
+    if signal.action not in ("BUY", "SELL"):
+        return {"action": "no_trade", "reasons": signal.reasons}
+    expected_type = options.option_type_for_signal(signal.action)
+    if contract.option_type != expected_type:
+        return {
+            "action": "rejected",
+            "reasons": [f"A {signal.action} signal trades a {expected_type}, not a {contract.option_type}"],
+            "signal": signal_dict(signal),
+        }
+
+    as_of = as_of or today_ist()
+    settings = get_settings()
+    days_left = (contract.expiry - as_of).days
+    delta = options.estimate_delta(
+        premium, spot or signal.entry_price or 0, contract.strike, contract.expiry, as_of, contract.option_type,
+        settings.option_risk_free_rate,
+    )
+
+    account = get_or_create_account(db)
+    today = get_today_risk_state(db)
+    open_positions = get_open_positions(db)
+    snapshot = AccountSnapshot(
+        capital=account.starting_capital,
+        open_positions_count=len(open_positions),
+        has_open_position_in_instrument=any(
+            p.option_leg is not None and p.option_leg.underlying_key == signal.instrument_key for p in open_positions
+        ),
+        daily_realized_pnl=today.realized_pnl,
+        trading_halted=account.trading_halted,
+        daily_loss_limit_halted=today.loss_limit_halted,
+    )
+
+    decision = RiskManager().evaluate_option(signal, snapshot, premium, delta, contract.lot_size)
+    if days_left < settings.option_min_days_to_expiry:
+        decision.approved = False
+        decision.reasons.append(
+            f"Contract expires in {days_left} day(s); the minimum is {settings.option_min_days_to_expiry}"
+        )
+
+    contract_info = option_contract_dict(contract)
+    if not decision.approved:
+        audit.record(
+            db,
+            "paper.option_signal_rejected",
+            {"underlying_key": signal.instrument_key, "contract": contract.instrument_key, "reasons": decision.reasons},
+        )
+        return {
+            "action": "rejected",
+            "reasons": decision.reasons,
+            "signal": signal_dict(signal),
+            "contract": contract_info,
+            "premium": premium,
+            "delta": round(delta, 3) if delta is not None else None,
+        }
+
+    fill_price = costs.apply_slippage(premium, "BUY", is_entry=True)
+    premium_stop, premium_target = options.premium_levels(
+        fill_price, delta, signal.entry_price, signal.stop_loss, signal.target
+    )
+    position = PaperPosition(
+        instrument_key=contract.instrument_key,
+        side="BUY",  # options are only ever bought, never written
+        quantity=decision.quantity,
+        entry_price=round(fill_price, 2),
+        stop_loss=premium_stop,
+        target=premium_target,
+        status="OPEN",
+    )
+    position.option_leg = PaperOptionLeg(
+        underlying_key=signal.instrument_key,
+        option_type=contract.option_type,
+        strike=contract.strike,
+        expiry=contract.expiry,
+        lot_size=contract.lot_size,
+        lots=decision.lots,
+        trading_symbol=contract.trading_symbol,
+        underlying_entry=signal.entry_price,
+        underlying_stop=signal.stop_loss,
+        underlying_target=signal.target,
+        entry_delta=round(delta, 4),
+    )
+    db.add(position)
+    db.commit()
+    db.refresh(position)
+
+    audit.record(
+        db,
+        "paper.option_position_opened",
+        {
+            "position_id": position.id,
+            "contract": contract.instrument_key,
+            "trading_symbol": contract.trading_symbol,
+            "lots": decision.lots,
+            "quantity": position.quantity,
+            "entry_premium": position.entry_price,
+            "max_loss_amount": decision.max_loss_amount,
+        },
+    )
+    return {
+        "action": "opened",
+        "position": position_dict(position),
+        "contract": contract_info,
+        "max_loss_amount": decision.max_loss_amount,
+        "delta": round(delta, 3),
+    }
+
+
+def check_option_exits(
+    db: Session,
+    underlying_key: str,
+    underlying_price: float,
+    option_prices: dict[str, float],
+    as_of: date | None = None,
+) -> list[dict]:
+    """Closes open option positions on this underlying when the underlying
+    crosses the signal's stop/target, or on/after expiry day. Positions whose
+    option price is unknown right now are left open (never closed at a guess).
+    """
+    as_of = as_of or today_ist()
+    closed = []
+    for position in get_open_positions(db):
+        leg = position.option_leg
+        if leg is None or leg.underlying_key != underlying_key:
+            continue
+        price = option_prices.get(position.instrument_key)
+        if price is None:
+            continue
+        if as_of >= leg.expiry:
+            reason = "expiry"
+        else:
+            reason = options.underlying_exit_reason(
+                leg.option_type, underlying_price, underlying_price, leg.underlying_stop, leg.underlying_target
+            )
+        if reason:
+            closed.append(_close_position(db, position, price, reason))
+    return closed
+
+
+def open_option_keys(db: Session, underlying_key: str) -> list[str]:
+    return [
+        p.instrument_key
+        for p in get_open_positions(db)
+        if p.option_leg is not None and p.option_leg.underlying_key == underlying_key
+    ]
+
+
+def option_contract_dict(contract: options.OptionContract) -> dict:
+    return {
+        "instrument_key": contract.instrument_key,
+        "underlying_key": contract.underlying_key,
+        "option_type": contract.option_type,
+        "strike": contract.strike,
+        "expiry": contract.expiry.isoformat(),
+        "lot_size": contract.lot_size,
+        "trading_symbol": contract.trading_symbol,
+    }
+
+
 def check_exits(db: Session, instrument_key: str, current_price: float) -> list[dict]:
     closed = []
     for position in get_open_positions(db, instrument_key=instrument_key):
+        if position.option_leg is not None:
+            continue  # option exits are driven by the underlying — see check_option_exits
         exit_reason = None
         if position.side == "BUY":
             if current_price <= position.stop_loss:
@@ -243,6 +414,25 @@ def position_dict(position: PaperPosition) -> dict:
         "exit_price": position.exit_price,
         "exit_reason": position.exit_reason,
         "realized_pnl": position.realized_pnl,
+        "option": _option_leg_dict(position.option_leg),
+    }
+
+
+def _option_leg_dict(leg: PaperOptionLeg | None) -> dict | None:
+    if leg is None:
+        return None
+    return {
+        "underlying_key": leg.underlying_key,
+        "option_type": leg.option_type,
+        "strike": leg.strike,
+        "expiry": leg.expiry.isoformat(),
+        "lot_size": leg.lot_size,
+        "lots": leg.lots,
+        "trading_symbol": leg.trading_symbol,
+        "underlying_entry": leg.underlying_entry,
+        "underlying_stop": leg.underlying_stop,
+        "underlying_target": leg.underlying_target,
+        "entry_delta": leg.entry_delta,
     }
 
 

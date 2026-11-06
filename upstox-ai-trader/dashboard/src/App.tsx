@@ -9,6 +9,7 @@ import { EmergencyControls } from "./components/EmergencyControls";
 import { BrokerPanel } from "./components/BrokerPanel";
 import { SignalPanel } from "./components/SignalPanel";
 import { BacktestPanel } from "./components/BacktestPanel";
+import { OptionsPanel } from "./components/OptionsPanel";
 import { LiveTradingPanel } from "./components/LiveTradingPanel";
 
 const POLL_INTERVAL_MS = 15_000;
@@ -94,6 +95,11 @@ function App() {
       <div className="card">
         <h2>Backtest</h2>
         <BacktestPanel connected={connected} />
+      </div>
+
+      <div className="card">
+        <h2>Options (F&amp;O): paper trading &amp; backtest</h2>
+        <OptionsPanel connected={connected} onTraded={refresh} />
       </div>
 
       <div className="card live-card">

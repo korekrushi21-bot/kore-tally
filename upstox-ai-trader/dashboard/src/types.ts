@@ -20,6 +20,7 @@ export interface PaperPositionDTO {
   realized_pnl: number | null;
   mark_price?: number;
   unrealized_pnl?: number;
+  option?: OptionLegDTO | null;
 }
 
 export interface PaperAccount {
@@ -152,4 +153,88 @@ export interface LiveEvaluateResult {
   protective_order_failures?: string[];
   reconciled?: unknown[];
   funds_note?: string | null;
+}
+
+// --- Options (F&O), paper + backtest only ---
+
+export interface OptionContractDTO {
+  instrument_key: string;
+  underlying_key: string;
+  option_type: "CE" | "PE";
+  strike: number;
+  expiry: string;
+  lot_size: number;
+  trading_symbol: string;
+}
+
+export interface OptionLegDTO {
+  underlying_key: string;
+  option_type: "CE" | "PE";
+  strike: number;
+  expiry: string;
+  lot_size: number;
+  lots: number;
+  trading_symbol: string;
+  underlying_entry: number;
+  underlying_stop: number;
+  underlying_target: number;
+  entry_delta: number;
+}
+
+export interface OptionContractsResponse {
+  underlying_key: string;
+  expiries: string[];
+  contracts: OptionContractDTO[];
+}
+
+export interface OptionSignalPreview {
+  signal: Omit<Signal, "invalidation" | "data_timestamp" | "is_stale" | "generated_at" | "candles_used">;
+  signal_action?: string;
+  spot?: number;
+  contract: OptionContractDTO | null;
+  days_to_expiry?: number;
+  premium?: number;
+  delta?: number | null;
+  estimated_premium_stop?: number | null;
+  estimated_premium_target?: number | null;
+  breakeven_at_expiry?: number;
+  risk?: {
+    approved: boolean;
+    lots: number;
+    quantity: number;
+    max_loss_amount: number;
+    premium_outlay: number;
+    reasons: string[];
+  };
+  entry_result?: { action: string; reasons?: string[] };
+}
+
+export interface OptionEvaluateResult {
+  exits: PaperPositionDTO[];
+  signal_action: string | null;
+  entry_result: {
+    action: "opened" | "rejected" | "no_trade" | "error";
+    position?: PaperPositionDTO;
+    max_loss_amount?: number;
+    delta?: number | null;
+    reasons?: string[];
+  };
+}
+
+export interface OptionBacktestTradeDTO extends Omit<BacktestTradeDTO, "side"> {
+  contract: string;
+  side: "BUY CE" | "BUY PE";
+}
+
+export interface OptionBacktestResult {
+  underlying_key: string;
+  call: OptionContractDTO;
+  put: OptionContractDTO;
+  candles_used: { underlying: number; call: number; put: number };
+  starting_capital: number;
+  ending_capital: number;
+  rejected_signal_count: number;
+  metrics: { all: BacktestMetrics; train: BacktestMetrics | null; test: BacktestMetrics | null };
+  trades: OptionBacktestTradeDTO[];
+  equity_curve: { date: string; equity: number }[];
 }

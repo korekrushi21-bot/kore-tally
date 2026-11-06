@@ -1,7 +1,7 @@
 from datetime import date, datetime
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, Integer, String, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
@@ -69,6 +69,37 @@ class PaperPosition(Base):
     exit_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
     costs: Mapped[float | None] = mapped_column(Float, nullable=True)
     realized_pnl: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Set only for option positions; None for plain equity positions.
+    option_leg: Mapped["PaperOptionLeg | None"] = relationship(
+        back_populates="position", uselist=False, lazy="selectin", cascade="all, delete-orphan"
+    )
+
+
+class PaperOptionLeg(Base):
+    """Option-specific details of a PaperPosition (a separate table, so the
+    existing paper_positions schema needs no migration). The position's own
+    stop_loss/target hold delta-projected PREMIUM levels for display; exits are
+    driven by the underlying_* levels stored here — see app/engine/options.py.
+    """
+
+    __tablename__ = "paper_option_legs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    position_id: Mapped[int] = mapped_column(ForeignKey("paper_positions.id"), unique=True)
+    underlying_key: Mapped[str] = mapped_column(String(64))
+    option_type: Mapped[str] = mapped_column(String(2))  # CE | PE
+    strike: Mapped[float] = mapped_column(Float)
+    expiry: Mapped[date] = mapped_column(Date)
+    lot_size: Mapped[int] = mapped_column(Integer)
+    lots: Mapped[int] = mapped_column(Integer)
+    trading_symbol: Mapped[str] = mapped_column(String(64), default="")
+    underlying_entry: Mapped[float] = mapped_column(Float)
+    underlying_stop: Mapped[float] = mapped_column(Float)
+    underlying_target: Mapped[float] = mapped_column(Float)
+    entry_delta: Mapped[float] = mapped_column(Float)
+
+    position: Mapped[PaperPosition] = relationship(back_populates="option_leg")
 
 
 class DailyRiskState(Base):

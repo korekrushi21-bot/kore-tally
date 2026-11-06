@@ -42,6 +42,16 @@ class Settings(BaseSettings):
     cost_pct_charges: float = 0.001
     slippage_bps: float = 5.0
 
+    # --- Options (F&O) paper trading / backtesting — see app/engine/options.py ---
+    # Never enter a contract with fewer calendar days than this left to expiry, and
+    # force-close option positions on expiry day: theta decay accelerates sharply there.
+    option_min_days_to_expiry: int = 3
+    # Most of capital a single option position may spend on premium, on top of the
+    # per-trade risk limit above.
+    option_max_premium_pct: float = 0.25
+    # Annualised risk-free rate used for the Black-Scholes delta estimate.
+    option_risk_free_rate: float = 0.065
+
     # --- Live trading (real money, real orders) — see app/engine/live_trading.py ---
     # Master kill switch. Defaults to disabled; must be flipped explicitly in .env and
     # the process restarted. There is deliberately no way to enable this via the API.

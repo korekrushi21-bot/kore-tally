@@ -290,6 +290,55 @@ dashboard/
 docker-compose.yml   Postgres + backend
 ```
 
+## Options (F&O): paper trading and backtesting
+
+Added after the five original phases. Code: `app/engine/options.py`,
+`app/engine/option_backtest.py`, `app/api/routes/options.py`, dashboard `OptionsPanel`.
+**Paper and backtest only.** There is no live option order placement.
+
+**How it trades**
+- The strategy runs on the **underlying's** chart (share or index), never on the option
+  premium chart. A BUY signal buys a **CALL (CE)**. A SELL signal buys a **PUT (PE)**.
+- Options are **only bought, never sold/written**. A buyer's worst case is the premium
+  paid, while a writer's loss is open-ended and this risk engine can't bound it.
+- Contract choice: the nearest expiry with at least `OPTION_MIN_DAYS_TO_EXPIRY` (default 3)
+  days left, or the expiry you pick. Then the strike nearest spot (ATM), shifted by
+  `strike_offset` (+n = n strikes OTM, -n = n strikes ITM).
+- Exits fire when the **underlying** crosses the signal's own stop-loss/target, the same
+  levels the equity path uses. P&L is booked on the premium. Positions still open on
+  **expiry day are force-closed**. A position is never closed at a guessed price: if the
+  option's LTP is unavailable, it stays open until the next evaluation.
+- Sizing is in **whole lots**: expected loss/unit ≈ `delta × |entry − stop|`, capped at the
+  premium. Lots = per-trade risk budget ÷ loss per lot, also capped so premium outlay stays
+  ≤ `OPTION_MAX_PREMIUM_PCT` (default 25%) of capital. Delta comes from Black-Scholes
+  using the option's own market price (implied vol solved by bisection, no dividends,
+  rate `OPTION_RISK_FREE_RATE` = 6.5%). Paper trading and backtests use the identical estimate.
+- Every other risk gate still applies: halts, stale data, minimum R:R, max open positions,
+  one position per underlying, daily loss limit.
+
+**Endpoints**
+- `GET /options/contracts?underlying_key=...`: listed expiries and contracts (lot size, strikes).
+- `GET /options/signal?underlying_key=...&strike_offset=0[&expiry_date=]`: read-only preview
+  showing chosen contract, premium, delta, breakeven, lots and planned max loss. Places nothing.
+- `POST /options/paper/evaluate?...`: checks exits on open option paper positions for that
+  underlying, then opens a new one if the signal and risk engine allow it.
+- `GET /options/backtest?underlying_key&expiry_date&strike&from_date&to_date&unit&interval`:
+  backtests one listed CE+PE pair; `unit` may be `days`, `hours` or `minutes`.
+
+**Known limitations**
+- The delta estimate is first-order. It ignores gamma and **theta**, so a position held for
+  days can lose more than the planned max loss even if the underlying never hits the stop.
+- Options backtests can only use **currently-listed** contracts. Upstox serves expired-contract
+  history through a separate expired-instruments API, which this app doesn't use. So the
+  range is limited to the contract's life, and intraday units give more bars.
+- Backtest fills are conservative. Entry is at the option bar close plus slippage. A stop exit
+  uses the option bar's **low** and a target exit its close. Bars where the option didn't trade
+  are skipped.
+- The cost model is the same approximate equity model (`app/engine/costs.py`). Real F&O
+  charges (STT on premium, exchange fees) differ, so tune `COST_PCT_CHARGES` if needed.
+- The `/v2/option/contract` response shape was checked against Upstox's docs (Nov 2026), not
+  against a real account. `parse_contracts` skips rows it can't read rather than guessing.
+
 ## Known limitations & assumptions (Phase 2)
 
 - **LTP response shape**: Upstox's own v3 LTP docs have reportedly drifted from what the
@@ -369,3 +418,6 @@ section above first. Natural next steps if you want to keep going: real instrume
 search/lookup (right now you supply instrument keys directly), persisted backtest runs,
 a WebSocket-based live feed instead of 15s polling, and genuinely exercising this against
 a real (small, carefully watched) Upstox account.
+
+Options (F&O) paper trading and backtesting are also built (see the Options section).
+Live option order placement is deliberately not built.
