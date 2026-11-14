@@ -80,14 +80,14 @@ def _trade(pnl: float, planned_rr: float = 2.0, cost: float = 5.0) -> BacktestTr
 
 
 def test_metrics_on_empty_trade_list():
-    metrics = _compute_metrics([])
+    metrics = _compute_metrics([], 1000.0)
     assert metrics["total_trades"] == 0
     assert metrics["profit_factor"] is None
 
 
 def test_metrics_win_rate_and_profit_factor():
     trades = [_trade(100), _trade(100), _trade(-50)]
-    metrics = _compute_metrics(trades)
+    metrics = _compute_metrics(trades, 1000.0)
     assert metrics["total_trades"] == 3
     assert metrics["win_rate"] == round(2 / 3, 4)
     assert metrics["gross_profit"] == 200
@@ -99,13 +99,27 @@ def test_metrics_win_rate_and_profit_factor():
 def test_metrics_max_drawdown_tracks_peak_to_trough():
     # cumulative: 100, 200, 150, 50, 150 -> peak 200, trough 50 -> drawdown 150
     trades = [_trade(100), _trade(100), _trade(-50), _trade(-100), _trade(100)]
-    metrics = _compute_metrics(trades)
+    metrics = _compute_metrics(trades, 1000.0)
     assert metrics["max_drawdown_amount"] == 150.0
-    assert metrics["max_drawdown_pct"] == round(150 / 200, 4)
+    # equity: 1100, 1200, 1150, 1050, 1150 -> fell 150 from a 1200 equity peak
+    assert metrics["max_drawdown_pct"] == round(150 / 1200, 4)
+
+
+def test_drawdown_pct_is_against_equity_not_profit():
+    # The dashboard case: Rs 911 peak profit, then a Rs 3,555 dip, on Rs 1 lakh.
+    trades = [_trade(911), _trade(-3555)]
+    metrics = _compute_metrics(trades, 100_000.0)
+    assert metrics["max_drawdown_amount"] == 3555.0
+    assert metrics["max_drawdown_pct"] == round(3555 / 100_911, 4)  # ~3.5%, not 390%
+
+
+def test_drawdown_pct_counts_losses_from_the_first_trade():
+    metrics = _compute_metrics([_trade(-500), _trade(-500)], 10_000.0)
+    assert metrics["max_drawdown_pct"] == 0.1
 
 
 def test_metrics_profit_factor_is_none_with_no_losses():
-    metrics = _compute_metrics([_trade(100), _trade(50)])
+    metrics = _compute_metrics([_trade(100), _trade(50)], 1000.0)
     assert metrics["profit_factor"] is None
     assert metrics["gross_loss"] == 0
 

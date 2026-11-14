@@ -130,11 +130,7 @@ def run_backtest(
         equity += trade.realized_pnl
         equity_curve.append((candles[-1].timestamp, equity))
 
-    metrics = {
-        "all": _compute_metrics(trades),
-        "train": _compute_metrics([t for t in trades if t.period == "train"]) if train_end_date else None,
-        "test": _compute_metrics([t for t in trades if t.period == "test"]) if train_end_date else None,
-    }
+    metrics = compute_period_metrics(trades, starting_capital, split=train_end_date is not None)
 
     return BacktestResult(
         instrument_key=instrument_key,
@@ -193,7 +189,29 @@ def _close_trade(
     )
 
 
-def _compute_metrics(trades: list[BacktestTrade]) -> dict:
+def compute_period_metrics(
+    trades: list[BacktestTrade], starting_capital: float, split: bool
+) -> dict:
+    """Metrics for all trades, plus train/test when a split was requested.
+    The test period's drawdown % is measured against the equity it actually
+    started with (capital plus whatever the train period made or lost).
+    """
+    train = [t for t in trades if t.period == "train"]
+    test = [t for t in trades if t.period == "test"]
+    return {
+        "all": _compute_metrics(trades, starting_capital),
+        "train": _compute_metrics(train, starting_capital) if split else None,
+        "test": _compute_metrics(test, starting_capital + sum(t.realized_pnl for t in train)) if split else None,
+    }
+
+
+def _compute_metrics(trades: list[BacktestTrade], starting_capital: float) -> dict:
+    """`max_drawdown_pct` is the largest fall in account EQUITY (capital plus
+    realized P&L) from its running peak, as a fraction of that peak. It used to
+    be measured against peak cumulative PROFIT, which reported e.g. 390% for a
+    Rs 3,555 dip after a Rs 911 peak profit on Rs 1 lakh capital, and 0% for
+    any run that lost money from the very first trade.
+    """
     if not trades:
         return {
             "total_trades": 0,
@@ -215,17 +233,17 @@ def _compute_metrics(trades: list[BacktestTrade]) -> dict:
     gross_profit = sum(t.realized_pnl for t in wins)
     gross_loss = abs(sum(t.realized_pnl for t in losses))
 
-    cumulative = 0.0
-    peak = 0.0
+    equity = starting_capital
+    peak_equity = starting_capital
     max_drawdown_amount = 0.0
     max_drawdown_pct = 0.0
     for t in trades:
-        cumulative += t.realized_pnl
-        peak = max(peak, cumulative)
-        drawdown = peak - cumulative
+        equity += t.realized_pnl
+        peak_equity = max(peak_equity, equity)
+        drawdown = peak_equity - equity
         max_drawdown_amount = max(max_drawdown_amount, drawdown)
-        if peak > 0:
-            max_drawdown_pct = max(max_drawdown_pct, drawdown / peak)
+        if peak_equity > 0:
+            max_drawdown_pct = max(max_drawdown_pct, drawdown / peak_equity)
 
     return {
         "total_trades": len(trades),

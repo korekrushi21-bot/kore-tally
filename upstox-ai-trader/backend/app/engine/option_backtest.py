@@ -28,7 +28,7 @@ from datetime import date
 
 from app.core.time_utils import IST
 from app.engine import costs, options
-from app.engine.backtest import BacktestResult, BacktestTrade, _compute_metrics
+from app.engine.backtest import BacktestResult, BacktestTrade, compute_period_metrics
 from app.engine.candle import Candle
 from app.engine.risk import AccountSnapshot, RiskConfig, RiskManager
 from app.engine.strategy import MIN_CANDLES, generate_signal
@@ -148,11 +148,7 @@ def run_option_backtest(
             equity += trade.realized_pnl
             equity_curve.append((last.timestamp, equity))
 
-    metrics = {
-        "all": _compute_metrics(trades),
-        "train": _compute_metrics([t for t in trades if t.period == "train"]) if train_end_date else None,
-        "test": _compute_metrics([t for t in trades if t.period == "test"]) if train_end_date else None,
-    }
+    metrics = compute_period_metrics(trades, starting_capital, split=train_end_date is not None)
     return BacktestResult(
         instrument_key=call_contract.underlying_key,
         starting_capital=starting_capital,
