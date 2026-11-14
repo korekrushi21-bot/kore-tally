@@ -349,6 +349,12 @@ Added after the five original phases. Code: `app/engine/options.py`,
   **not** reset per trading day. For a multi-day daily-candle series this is not a
   textbook intraday VWAP; treat it as a longer-horizon mean-price reference until a
   per-day-reset version is added.
+- **Indices have no volume.** Upstox reports volume 0 for NIFTY, BANKNIFTY and other
+  indices, so VWAP and the volume-confirmed breakout can't vote there. On such data the
+  strategy uses the remaining 4 indicators (EMA trend, RSI, MACD) and still needs **3**
+  agreeing points, so strength is reported out of 4 and the signal says so in its reasons.
+  Lowering the bar to 2 of 4 was tried and rejected: it produced BUY signals on flat,
+  choppy data. Using the index futures' volume instead is a possible future improvement.
 - **Cost model** (`app/engine/costs.py`) is a configurable approximation for paper P&L
   only — not real brokerage/STT/exchange-charge figures, and must never be treated as such.
 - **Daily loss halt** (`DailyRiskState.loss_limit_halted`) resets automatically on IST date

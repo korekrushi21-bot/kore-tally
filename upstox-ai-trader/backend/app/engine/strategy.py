@@ -5,6 +5,9 @@ from app.engine import indicators
 from app.engine.candle import Candle
 
 MIN_CANDLES = 60
+# Indicators that vote: EMA trend, RSI, MACD, VWAP, volume-confirmed breakout.
+# A signal needs half of the available votes (3 of 6 points normally).
+_VOLUME_LOOKBACK = 50
 _STALE_AFTER = timedelta(days=5)  # loose bound to tolerate weekends/holidays on daily candles
 
 
@@ -42,7 +45,12 @@ def generate_signal(candles: list[Candle], instrument_key: str) -> Signal:
     rsi14 = indicators.rsi(closes, 14)
     macd_line, macd_signal, macd_hist = indicators.macd(closes)
     atr14 = indicators.atr(candles, 14)
-    vwap_series = indicators.vwap(candles)
+    # Indices (NIFTY, BANKNIFTY, ...) have no traded volume: Upstox reports 0.
+    # VWAP and the volume-confirmed breakout can't be computed there, so they
+    # are skipped and the threshold scales down instead of silently making
+    # index signals much harder to reach.
+    has_volume = any(c.volume > 0 for c in candles[-_VOLUME_LOOKBACK:])
+    vwap_series = indicators.vwap(candles) if has_volume else [None] * len(candles)
     support, resistance = indicators.rolling_support_resistance(candles, 20)
     breakout, breakdown = indicators.detect_breakout(candles, 20)
     trend = indicators.detect_trend(ema9[-1], ema21[-1], ema50[-1])
@@ -84,7 +92,7 @@ def generate_signal(candles: list[Candle], instrument_key: str) -> Signal:
             bearish_reasons.append("MACD line below signal line with expanding negative histogram: bearish momentum confirmed")
 
     vw = vwap_series[-1]
-    if vw is not None:
+    if has_volume and vw is not None:
         if last.close > vw:
             score += 1
             bullish_reasons.append(f"Price {last.close:.2f} trading above VWAP {vw:.2f}: buyers in control")
@@ -92,28 +100,36 @@ def generate_signal(candles: list[Candle], instrument_key: str) -> Signal:
             score -= 1
             bearish_reasons.append(f"Price {last.close:.2f} trading below VWAP {vw:.2f}: sellers in control")
 
-    if breakout:
+    if has_volume and breakout:
         score += 1
         bullish_reasons.append(f"Breakout above {resistance:.2f} (20-bar resistance) confirmed by volume")
-    elif breakdown:
+    elif has_volume and breakdown:
         score -= 1
         bearish_reasons.append(f"Breakdown below {support:.2f} (20-bar support) confirmed by volume")
 
-    threshold = 3
+    max_score = 6 if has_volume else 4
+    threshold = 3  # always 3 confirming indicators: 2 of 4 gave BUYs on flat, choppy index data
     action = "NO_TRADE"
     if score >= threshold:
         action = "BUY"
     elif score <= -threshold:
         action = "SELL"
 
-    strength = min(100.0, abs(score) / 6 * 100)
+    strength = min(100.0, abs(score) / max_score * 100)
+    volume_note = (
+        None
+        if has_volume
+        else "No volume data (index): VWAP and volume-confirmed breakout skipped; "
+        f"needs {threshold} of {max_score} points"
+    )
 
     if action == "NO_TRADE" or atr14[-1] is None:
         return Signal(
             instrument_key=instrument_key,
             action="NO_TRADE",
             strength=strength,
-            reasons=bullish_reasons + bearish_reasons or ["No strategy had enough conviction either way"],
+            reasons=(bullish_reasons + bearish_reasons or ["No strategy had enough conviction either way"])
+            + ([volume_note] if volume_note else []),
             data_timestamp=last.timestamp,
             is_stale=is_stale,
         )
@@ -149,6 +165,8 @@ def generate_signal(candles: list[Candle], instrument_key: str) -> Signal:
     risk_reward = abs(target - entry) / risk_per_unit
 
     reasons.append(f"Volatility regime: {regime} (ATR14={atr_value:.2f})")
+    if volume_note:
+        reasons.append(volume_note)
 
     return Signal(
         instrument_key=instrument_key,
