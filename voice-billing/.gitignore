@@ -1,0 +1,11 @@
+billing_token.txt
+logs/
+_models/
+__pycache__/
+temp_command.wav
+*.pyc
+backups_before_batch/
+config.json.before-*
+debug_*
+fix_*.py
+*_result*.txt

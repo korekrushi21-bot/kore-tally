@@ -1,0 +1,99 @@
+{
+  "tally": {
+    "host": "127.0.0.1",
+    "port": 9000,
+    "company": "",
+    "timeout": 10
+  },
+  "voice": {
+    "model": "small",
+    "device": "cpu",
+    "compute_type": "int8",
+    "sample_rate": 16000,
+    "record_seconds": 5.0,
+    "wake_record_seconds": 3.0,
+    "language": "auto",
+    "input_device": null,
+    "model_cache_dir": "./_models"
+  },
+  "tts": {
+    "voice": "mr-IN-AarohiNeural",
+    "rate": "+0%",
+    "cache_dir": "./logs/tts_cache"
+  },
+  "matching": {
+    "threshold": 0.74,
+    "ambiguity_gap": 0.05
+  },
+  "session": {
+    "inactivity_timeout_seconds": 20,
+    "max_session_seconds": 300
+  },
+  "voucher_types": {
+    "sales": {
+      "enabled": true,
+      "item_ledger_by_group": {
+        "FERTILIZERS": "GST Fertilizer Sale",
+        "Pesticides": "GST Pesticides Sales",
+        "SEEDS": "GST Seed Sale",
+        "Other": "GST Others Sale",
+        "*": "GST Others Sale"
+      }
+    },
+    "purchase": {
+      "enabled": true,
+      "item_ledger": "Purchase A/c"
+    },
+    "credit_note": {
+      "enabled": true,
+      "item_ledger_by_group": {
+        "FERTILIZERS": "GST Fertilizer Sale",
+        "Pesticides": "GST Pesticides Sales",
+        "SEEDS": "GST Seed Sale",
+        "Other": "GST Others Sale",
+        "*": "GST Others Sale"
+      }
+    },
+    "debit_note": {
+      "enabled": true,
+      "item_ledger": "Purchase Return"
+    }
+  },
+  "gst": {
+    "enabled": true,
+    "company_state": "Maharashtra",
+    "ledgers": {
+      "output": {
+        "CGST": "",
+        "SGST": "",
+        "IGST": ""
+      },
+      "input": {
+        "CGST": "",
+        "SGST": "",
+        "IGST": ""
+      }
+    },
+    "default_by_group": {
+      "SEEDS": 0
+    }
+  },
+  "billing": {
+    "draft_ttl_seconds": 600,
+    "batch_policy": "auto",
+    "spoken_rate_includes_gst": false
+  },
+  "billing_service": {
+    "port": 4300
+  },
+  "purchase_lookup": {
+    "lookback_days": 730
+  },
+  "wake_word": "टॅली सुरू कर",
+  "mode": "VOICE_BILLING",
+  "writes_enabled": true,
+  "rounding": {
+    "enabled": true,
+    "ledger": "R/o"
+  }
+}

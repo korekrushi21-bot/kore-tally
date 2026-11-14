@@ -1,0 +1,15 @@
+{
+  "name": "tally-prashna",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Desktop app to ask questions about Tally data (read-only).",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.127.0",
+    "express": "^4.19.2",
+    "xml2js": "^0.6.2"
+  }
+}

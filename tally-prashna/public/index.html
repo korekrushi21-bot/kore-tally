@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="mr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tally Prashna</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="title">Tally Prashna <span class="sub">fakt vachte, Tally madhe kahi badalat nahi</span></div>
+    <div class="status">
+      <span id="tallyStatus" class="pill">Tally…</span>
+      <label class="pill toggle" title="AI band kelyas fakt offline search vaparla jail">
+        <input type="checkbox" id="useAi" /> AI
+      </label>
+      <button id="clearBtn" title="Juni chat pusun taka">🗑 Chat saaf</button>
+      <button id="printAllBtn" title="Sagale prashna-uttare print kara">🖨 Sagale print</button>
+      <button id="refreshBtn" title="Tally madhun navin data ghya">⟳ Refresh</button>
+    </div>
+  </header>
+
+  <main id="chat">
+    <div class="msg bot intro">
+      <p>Namaskar! Tally baddal prashna vichara. Udaharan:</p>
+      <div class="examples">
+        <button>urea without bill konta v konchya ac var aahe</button>
+        <button>dap stock kiti aahe</button>
+        <button>sundry debtors madhe sarvat jast baki konachi</button>
+        <button>urea sales ya mahinyat</button>
+      </div>
+    </div>
+  </main>
+
+  <form id="askForm">
+    <button type="button" id="micBtn" title="Bolun vichara (mic)">🎙</button>
+    <input id="question" autocomplete="off" placeholder="Prashna lihaa kinva 🎙 dabun bola… (Enter)" autofocus />
+    <button type="submit" id="askBtn">Vichara</button>
+  </form>
+  <div id="voiceBar">
+    <select id="voiceLang" title="Bolnyachi bhasha">
+      <option value="mr">मराठी</option>
+      <option value="hi">हिंदी</option>
+      <option value="en">English</option>
+    </select>
+    <label title="Uttar bolun saanga"><input type="checkbox" id="speakOn" /> 🔊 Uttar bolun</label>
+    <label title="Uttar jhalyavar punha aaplyala aikat raha"><input type="checkbox" id="handsFree" /> 🔁 Satat</label>
+    <button type="button" id="stopSpeakBtn" hidden>⏹ Thamba</button>
+    <span id="voiceMsg" class="meta"></span>
+  </div>
+
+  <script src="app.js"></script>
+  <script src="voice.js"></script>
+</body>
+</html>
