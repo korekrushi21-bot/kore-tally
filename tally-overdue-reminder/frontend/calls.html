@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="mr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#12395b">
+<title>कॉल स्मरणपत्र</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
+<style>
+  body { background: #f3f5f8; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 12px; }
+  .card { background: #fff; border-radius: 12px; padding: 14px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .grow { flex: 1; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+  .b-dry { background: #fff3cd; color: #7a5a00; }
+  .b-live { background: #d1f2dc; color: #0b6b2e; }
+  .b-off { background: #eee; color: #555; }
+  .master { font-size: 18px; font-weight: 700; }
+  .switch { width: 54px; height: 30px; border-radius: 15px; border: none; background: #ccc; position: relative; cursor: pointer; flex: none; }
+  .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: left .15s; }
+  .switch.on { background: #1a8f44; }
+  .switch.on::after { left: 27px; }
+  .rules { font-size: 13px; color: #444; line-height: 1.7; margin: 8px 0 0; padding-left: 18px; }
+  .script { background: #f7f9fc; border-left: 4px solid #12395b; padding: 10px; font-size: 14px; line-height: 1.6; }
+  .cust { border-top: 1px solid #eee; padding: 10px 0; }
+  .cust:first-child { border-top: none; }
+  .name { font-weight: 700; }
+  .muted { color: #777; font-size: 12px; }
+  .amt { font-weight: 700; color: #b3261e; white-space: nowrap; }
+  .phone { width: 130px; padding: 6px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+  .status-line { font-size: 13px; color: #12395b; margin-top: 4px; }
+  .err { background: #fde8e8; color: #8a1c1c; padding: 10px; border-radius: 8px; margin-bottom: 12px; }
+  table.log { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.log td, table.log th { padding: 6px 4px; border-bottom: 1px solid #eee; text-align: left; }
+  .btn { padding: 8px 12px; border-radius: 8px; border: 1px solid #12395b; background: #fff; color: #12395b; cursor: pointer; font-size: 14px; }
+  .btn:disabled { opacity: .5; }
+  input.search { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 8px; font-size: 15px; margin-bottom: 8px; box-sizing: border-box; }
+  h2 { font-size: 16px; margin: 0 0 8px; }
+  a.back { color: #fff; text-decoration: none; font-size: 14px; }
+  .seg { display: flex; border: 1px solid #12395b; border-radius: 10px; overflow: hidden; }
+  .seg button { flex: 1; padding: 10px 6px; border: none; background: #fff; color: #12395b; font-size: 14px; cursor: pointer; }
+  .seg button.active { background: #12395b; color: #fff; font-weight: 700; }
+  .due { border: 1px solid #f0c9c6; background: #fff8f7; border-radius: 10px; padding: 10px; margin-top: 10px; }
+  .callbtn { display: block; text-align: center; background: #1a8f44; color: #fff; text-decoration: none; font-size: 18px; font-weight: 700; padding: 12px; border-radius: 10px; margin: 8px 0; }
+  .callbtn.wabtn { background: #25d366; }
+  .callbtn.grow { flex: 1; }
+  .results { display: flex; gap: 6px; }
+  .results button { flex: 1; padding: 10px 4px; border-radius: 8px; border: 1px solid #ccc; background: #fff; font-size: 14px; cursor: pointer; }
+  .results button.ans { border-color: #1a8f44; color: #0b6b2e; }
+  .empty-ok { color: #0b6b2e; padding: 8px 0; }
+</style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-top">
+      <div>
+        <a class="back" href="/">← थकबाकी</a>
+        <h1>📞 कॉल स्मरणपत्र</h1>
+        <div class="app-subtitle" id="sub">loading...</div>
+      </div>
+      <button id="refresh" class="header-icon-btn" title="Refresh">🔄</button>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div id="errors"></div>
+
+    <div class="card" id="push-card">
+      <h2>🔔 मला आठवण करून द्या</h2>
+      <div class="muted" id="push-msg">कोणाला कॉल करायचा, कोणी उचलला नव्हता - याच्या सूचना मोबाईलवर येतील.</div>
+      <div class="row" style="margin-top:8px">
+        <button id="push-on" class="btn">🔔 सूचना चालू करा</button>
+        <button id="push-test" class="btn" hidden>चाचणी सूचना पाठवा</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>कॉल कसे करायचे?</h2>
+      <div class="seg">
+        <button id="mode-manual">📱 माझ्या मोबाईलवरून (मोफत)</button>
+        <button id="mode-auto">🤖 आपोआप (Exotel)</button>
+      </div>
+      <ul class="rules" id="rules"></ul>
+    </div>
+
+    <div class="card" id="manual-card" hidden>
+      <h2>📞 आता कॉल करा <span class="muted" id="due-count"></span></h2>
+      <div class="muted">📞 दाबा, ग्राहकाशी बोला, मग कॉल संपल्यावर निकालाचं बटण दाबा. पुढचा कॉल कधी ते ॲप ठरवेल. 💬 दाबलं की त्या ग्राहकाचं WhatsApp संदेशासह उघडतं - फक्त Send दाबा.</div>
+      <div id="due-list"></div>
+      <div class="muted" id="later" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card" id="auto-card" hidden>
+      <div class="row">
+        <div class="grow">
+          <div class="master">सर्व कॉल <span id="master-label">बंद</span></div>
+          <div class="muted">हे बंद केलं की कोणालाही कॉल जाणार नाही.</div>
+        </div>
+        <button id="master" class="switch" aria-label="सर्व कॉल चालू/बंद"></button>
+      </div>
+      <div style="margin-top:8px">कॉल पद्धत: <span id="provider" class="badge b-off">-</span></div>
+      <div class="row" style="margin-top:8px">
+        <button id="test" class="btn">🔔 स्वतःच्या नंबरवर चाचणी कॉल</button>
+        <span id="test-msg" class="muted"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 id="script-title">ग्राहकाशी काय बोलायचं</h2>
+      <div class="script">
+        नमस्कार, हा कॉल कोरे कृषी सेवा केंद्र, शिरूर अनंतपाळ येथून आलेला आहे.
+        आपली बाकी रक्कम प्रलंबित आहे. कृपया लवकरात लवकर केंद्रावर येऊन आपली बाकी जमा करावी.
+        अधिक माहितीसाठी केंद्राशी संपर्क साधावा. धन्यवाद.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>ग्राहक <span class="muted" id="count"></span></h2>
+      <div class="muted" style="margin-bottom:8px">ज्यांना कॉल पाठवायचा आहे त्यांचं बटण चालू करा. Tally मध्ये नंबर नसेल तर इथे टाका.</div>
+      <input id="search" class="search" type="search" placeholder="नाव शोधा...">
+      <label class="muted"><input type="checkbox" id="only-on"> फक्त चालू असलेले दाखवा</label>
+      <div id="list"></div>
+    </div>
+
+    <div class="card">
+      <h2>कॉलची नोंद (शेवटचे ६०)</h2>
+      <table class="log"><thead><tr><th>वेळ</th><th>ग्राहक</th><th>नंबर</th><th>निकाल</th></tr></thead><tbody id="log"></tbody></table>
+    </div>
+  </div>
+
+<script src="calls.js"></script>
+</body>
+</html>

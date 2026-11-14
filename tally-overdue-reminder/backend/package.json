@@ -1,0 +1,16 @@
+{
+  "name": "tally-overdue-reminder-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pulls customer outstanding bills from Tally, calculates overdue interest, and shows recent product rates for reminders.",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "web-push": "^3.6.7",
+    "xml2js": "^0.6.2"
+  }
+}

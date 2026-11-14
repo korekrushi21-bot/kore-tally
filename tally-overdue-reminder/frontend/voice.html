@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="mr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tally Voice</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1c1f23; --muted:#6b7280; --accent:#2563eb; --bad:#b91c1c; --line:#e5e7eb; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#111418; --card:#1a1f26; --text:#e8eaed; --muted:#9aa3ad; --accent:#60a5fa; --bad:#f87171; --line:#2b323b; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:"Segoe UI", system-ui, sans-serif; }
+  main { max-width:640px; margin:0 auto; padding:16px; }
+  h1 { font-size:20px; margin:4px 0 2px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:14px; }
+  .bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  select, input[type=text], button { font:inherit; padding:9px 12px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--text); }
+  input[type=text] { flex:1; min-width:180px; }
+  #mic { width:84px; height:84px; border-radius:50%; background:var(--accent); color:#fff; border:none; font-size:34px; cursor:pointer; }
+  #mic.on { background:var(--bad); animation:pulse 1s infinite; }
+  @keyframes pulse { 50% { transform:scale(1.07); } }
+  .micwrap { text-align:center; margin:10px 0 6px; }
+  #status { text-align:center; color:var(--muted); min-height:20px; font-size:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-top:12px; }
+  .q { color:var(--muted); font-size:13px; }
+  .a { margin-top:6px; font-size:17px; line-height:1.5; white-space:pre-line; }
+  .hint { color:var(--muted); font-size:13px; margin-top:16px; line-height:1.6; }
+  label.chk { font-size:14px; color:var(--muted); display:flex; gap:6px; align-items:center; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🎙️ Tally Voice</h1>
+  <div class="sub">फक्त वाचते. Tally मध्ये काहीही बदलत नाही.</div>
+
+  <div class="bar">
+    <select id="lang">
+      <option value="mr-IN">मराठी</option>
+      <option value="hi-IN">हिंदी</option>
+      <option value="en-IN">English</option>
+    </select>
+    <label class="chk"><input type="checkbox" id="speak" checked> आवाजात उत्तर</label>
+  </div>
+
+  <div class="micwrap"><button id="mic" title="बोला">🎤</button></div>
+  <div id="status">माइकवर दाबा आणि बोला</div>
+
+  <form id="typed" class="bar" style="margin-top:12px">
+    <input type="text" id="text" placeholder="किंवा इथे लिहा: रमेश चे किती बाकी आहे">
+    <button type="submit">विचारा</button>
+  </form>
+
+  <div id="log"></div>
+
+  <div class="hint">
+    उदाहरणे:<br>
+    • "रमेश चे किती बाकी आहे?"<br>
+    • "एकूण बाकी किती?"<br>
+    • "सर्वात जास्त बाकी कोणाचे?"<br>
+    • "किती जण थकित आहेत?"<br>
+    • "सिमेंट चा भाव किती?"
+  </div>
+</main>
+<script src="voice.js"></script>
+</body>
+</html>
