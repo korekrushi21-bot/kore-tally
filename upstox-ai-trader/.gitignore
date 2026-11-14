@@ -9,5 +9,6 @@ backend/.venv/
 # SQLite DB can land here too if a dev server is ever launched with a cwd
 # other than backend/ (e.g. from a launcher script's working directory).
 upstox_trader.db
+upstox_trader.db.bak*
 dashboard/node_modules/
 dashboard/dist/

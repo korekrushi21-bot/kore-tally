@@ -78,6 +78,27 @@ class Settings(BaseSettings):
     live_stop_all_confirmation_phrase: str = "STOP ALL LIVE TRADING"
 
 
+_BACKEND_DIR = Path(__file__).resolve().parents[2]
+
+
+def _pin_relative_sqlite(url: str) -> str:
+    """A relative SQLite path resolves against whatever the current working
+    directory happens to be, so launching from the repo root vs from backend/
+    silently used two different database files. Relative paths are pinned to
+    the backend/ folder instead; absolute paths, :memory: and non-SQLite URLs
+    are left alone.
+    """
+    prefix = "sqlite:///"
+    if not url.startswith(prefix):
+        return url
+    path = url[len(prefix):]
+    if path == ":memory:" or path.startswith("/") or Path(path).is_absolute():
+        return url
+    return prefix + (_BACKEND_DIR / path).resolve().as_posix()
+
+
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    settings.database_url = _pin_relative_sqlite(settings.database_url)
+    return settings
