@@ -6,8 +6,15 @@ import type {
   LivePositionDTO,
   LivePreflight,
   LiveStatus,
+  OptionBacktestResult,
+  OptionContractsResponse,
+  OptionEvaluateResult,
+  OptionSignalPreview,
   PaperAccount,
   PaperPositionDTO,
+  ScanContext,
+  ScanLatest,
+  ScanRunDTO,
   Signal,
   UpstoxPassthrough,
 } from "./types";
@@ -32,6 +39,25 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(res.status, body.detail ?? `Request failed (${res.status})`);
   }
   return res.json() as Promise<T>;
+}
+
+export interface OptionTradeParams {
+  underlyingKey: string;
+  strikeOffset: number;
+  expiryDate?: string;
+  unit?: string;
+  interval?: number;
+}
+
+function optionTradeQuery(p: OptionTradeParams) {
+  const qs = new URLSearchParams({
+    underlying_key: p.underlyingKey,
+    strike_offset: String(p.strikeOffset),
+    unit: p.unit ?? "days",
+    interval: String(p.interval ?? 1),
+  });
+  if (p.expiryDate) qs.set("expiry_date", p.expiryDate);
+  return qs.toString();
 }
 
 export const api = {
@@ -92,6 +118,40 @@ export const api = {
     if (params.startingCapital) qs.set("starting_capital", String(params.startingCapital));
     return request<BacktestResult>(`/backtest/run?${qs.toString()}`);
   },
+
+  optionContracts: (underlyingKey: string) =>
+    request<OptionContractsResponse>(`/options/contracts?underlying_key=${encodeURIComponent(underlyingKey)}`),
+  optionSignal: (p: OptionTradeParams) => request<OptionSignalPreview>(`/options/signal?${optionTradeQuery(p)}`),
+  optionPaperEvaluate: (p: OptionTradeParams) =>
+    request<OptionEvaluateResult>(`/options/paper/evaluate?${optionTradeQuery(p)}`, { method: "POST" }),
+  optionBacktest: (p: {
+    underlyingKey: string;
+    expiryDate: string;
+    strike: number;
+    fromDate: string;
+    toDate: string;
+    unit: string;
+    interval: number;
+    trainEndDate?: string;
+    startingCapital?: number;
+  }) => {
+    const qs = new URLSearchParams({
+      underlying_key: p.underlyingKey,
+      expiry_date: p.expiryDate,
+      strike: String(p.strike),
+      from_date: p.fromDate,
+      to_date: p.toDate,
+      unit: p.unit,
+      interval: String(p.interval),
+    });
+    if (p.trainEndDate) qs.set("train_end_date", p.trainEndDate);
+    if (p.startingCapital) qs.set("starting_capital", String(p.startingCapital));
+    return request<OptionBacktestResult>(`/options/backtest?${qs.toString()}`);
+  },
+
+  scanLatest: () => request<ScanLatest>("/scan/latest"),
+  scanContext: () => request<ScanContext>("/scan/context"),
+  scanRun: () => request<ScanRunDTO>("/scan/run", { method: "POST" }),
 
   liveStatus: () => request<LiveStatus>("/live/status"),
   livePreflight: () => request<LivePreflight>("/live/preflight"),

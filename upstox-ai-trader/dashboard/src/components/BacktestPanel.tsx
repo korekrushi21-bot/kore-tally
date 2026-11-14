@@ -3,7 +3,7 @@ import type { BacktestMetrics, BacktestResult } from "../types";
 import { api, ApiError } from "../api";
 import { EquityCurveChart } from "./EquityCurveChart";
 
-function MetricsTable({ title, metrics }: { title: string; metrics: BacktestMetrics | null }) {
+export function MetricsTable({ title, metrics }: { title: string; metrics: BacktestMetrics | null }) {
   if (!metrics) return null;
   if (metrics.total_trades === 0) {
     return (

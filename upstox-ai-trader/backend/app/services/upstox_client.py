@@ -11,6 +11,9 @@ Oct 2026:
   - Order book:  GET  /v2/order/retrieve-all
   - Order detail: GET /v2/order/details?order_id=...
   - LTP:         GET  /v3/market-quote/ltp?instrument_key=...
+  - Option contracts: GET /v2/option/contract?instrument_key=<UNDERLYING key>[&expiry_date=YYYY-MM-DD]
+    (verified Nov 2026; returns active CE/PE contracts with strike_price, expiry
+    YYYY-MM-DD, lot_size, instrument_key "NSE_FO|...", trading_symbol)
   - Historical candles: GET /v3/historical-candle/{instrument_key}/{unit}/{interval}/{to_date}[/{from_date}]
   - Intraday candles:   GET /v3/historical-candle/intraday/{instrument_key}/{unit}/{interval}
     `unit` is one of "minutes" | "days" | "weeks" | "months"; `interval` is an
@@ -83,6 +86,26 @@ class UpstoxClient:
     async def get_ltp(self, instrument_keys: list[str]) -> dict:
         return await self._get("/v3/market-quote/ltp", params={"instrument_key": ",".join(instrument_keys)})
 
+    async def get_option_contracts(self, underlying_key: str, expiry_date: str | None = None) -> dict:
+        params = {"instrument_key": underlying_key}
+        if expiry_date:
+            params["expiry_date"] = expiry_date
+        return await self._get("/v2/option/contract", params=params)
+
+    async def get_futures_smartlist(self, asset_type: str, category: str, page_size: int = 50, page_number: int = 1) -> dict:
+        """GET /v2/market/smartlist/futures (needs login; checked against a live
+        response Nov 2026: data.smartlist = [{instrument_key "NSE_FO|..",
+        price{current, close_price, change_pct}, metric{current, previous, change_pct}}])."""
+        params = {"asset_type": asset_type, "category": category, "page_number": page_number, "page_size": page_size}
+        return await self._get("/v2/market/smartlist/futures", params=params)
+
+    async def get_news(self, instrument_keys: list[str], page_size: int = 100) -> dict:
+        """GET /v2/news, max 30 instrument keys per call (needs login). Response
+        data is keyed by instrument key -> [{heading, summary, article_link,
+        published_time (epoch ms)}]."""
+        params = {"category": "instrument_keys", "instrument_keys": ",".join(instrument_keys), "page_size": page_size}
+        return await self._get("/v2/news", params=params)
+
     async def get_historical_candles(
         self, instrument_key: str, unit: str, interval: int, to_date: str, from_date: str | None = None
     ) -> dict:
@@ -90,7 +113,11 @@ class UpstoxClient:
         path = f"/v3/historical-candle/{key}/{unit}/{interval}/{to_date}"
         if from_date:
             path += f"/{from_date}"
-        return await self._get(path)
+        # Upstox serves v3 historical candles without an access token (checked
+        # Nov 2026), so a client created with no token can still fetch them.
+        # That is what lets the 9:00 morning scan run before the daily login.
+        # If Upstox starts requiring auth, this returns its 401 as an error.
+        return await self._request("GET", path, allow_anonymous=True)
 
     async def get_intraday_candles(self, instrument_key: str, unit: str, interval: int) -> dict:
         key = quote(instrument_key, safe="")
@@ -157,15 +184,14 @@ class UpstoxClient:
         json_body: dict | None = None,
         extra_headers: dict | None = None,
         base: str | None = None,
+        allow_anonymous: bool = False,
     ) -> dict:
-        if not self._access_token:
+        if not self._access_token and not allow_anonymous:
             raise UpstoxAPIError(401, "No access token supplied to UpstoxClient")
         url = f"{base or self._settings.upstox_api_base}{path}"
-        headers = {
-            "Accept": "application/json",
-            "Authorization": f"Bearer {self._access_token}",
-            **(extra_headers or {}),
-        }
+        headers = {"Accept": "application/json", **(extra_headers or {})}
+        if self._access_token:
+            headers["Authorization"] = f"Bearer {self._access_token}"
         if json_body is not None:
             headers["Content-Type"] = "application/json"
         async with httpx.AsyncClient(timeout=15) as client:

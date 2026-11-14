@@ -52,7 +52,19 @@ export function PositionsTable({
         <tbody>
           {positions.map((p) => (
             <tr key={p.id}>
-              <td>{p.instrument_key}</td>
+              <td>
+                {p.option ? (
+                  <>
+                    <strong>{p.option.trading_symbol || p.instrument_key}</strong>
+                    <div className="muted">
+                      {p.option.lots} lot(s) · exits on underlying {p.option.underlying_stop.toFixed(2)} /{" "}
+                      {p.option.underlying_target.toFixed(2)} · expiry {p.option.expiry}
+                    </div>
+                  </>
+                ) : (
+                  p.instrument_key
+                )}
+              </td>
               <td>
                 <span className={`pill ${p.side === "BUY" ? "green" : "red"}`}>{p.side}</span>
               </td>

@@ -290,6 +290,102 @@ dashboard/
 docker-compose.yml   Postgres + backend
 ```
 
+## Morning scan (F&O stocks)
+
+Code: `app/engine/scanner.py`, `app/services/instruments.py`, `app/api/routes/scan.py`,
+`app/scan_cli.py`, dashboard `MorningScanPanel` (top of the page).
+
+- **What it does:** every weekday at 9:00 it scans every stock that has F&O contracts (~218,
+  from Upstox's public instrument file, cached daily in `backend/data/`). For each stock it
+  runs the same strategy as "Get Signal" on the last ~150 days of daily candles, and
+  backtests that strategy on the same stock over the last 2 years.
+- **Output:** each BUY/SELL signal is shown with a backtest verdict: profitable (profit
+  factor ≥ 1.3, ≥ 5 trades), break-even, lost money, or too few trades. Signals with a
+  profitable backtest are listed first. These are **rule-based signals, not
+  recommendations**. Nothing is ordered.
+- **No login needed:** Upstox serves v3 daily candles without an access token (checked
+  Nov 2026), so the 9:00 run works before the daily OAuth login. If you are logged in, the
+  session token is used anyway. If Upstox ever starts requiring auth there, the scan's
+  per-stock errors will say "Upstox 401".
+- **Schedule:** Windows Task Scheduler task **"Upstox Morning Scan"**, weekdays 9:00, runs
+  `Morning Scan.cmd` and appends a summary line to `backend/logs/scan.log`. The PC must be on
+  (with "start when available", a missed 9:00 runs at the next boot). The backend server
+  doesn't need to be running. Remove it with
+  `schtasks /Delete /TN "Upstox Morning Scan" /F`. Run one anytime with the dashboard's
+  **Scan now** button or by double-clicking `Morning Scan.cmd`.
+- **Read the verdicts with care.** In the first real scan (Nov 2026) the strategy lost money
+  on 173 of 218 stocks (median profit factor 0.74). With 218 stocks tested, a few will show a
+  profitable 2-year backtest by chance alone. Treat "profitable" as "not ruled out" and
+  paper-trade before trusting it.
+- **Option trade per signal** (`app/engine/option_picker.py`): for each BUY/SELL the scan
+  picks one contract and states every rule. A BUY gets a CALL and a SELL gets a PUT. The expiry
+  must be at least 1.5× the stock's average backtest holding period + 3 days away. The strike
+  is ATM / 1 ITM / 2 ITM, whichever has delta closest to 0.65 and traded on the signal day.
+  Lots come from the risk engine. The plan gives an entry LIMIT (previous close premium + 5%,
+  only while the stock is between its stop and 25% of the way to target). It also gives exits
+  on the stock's stop/target with Black-Scholes premium estimates at the option's implied
+  volatility, and a time exit 2 days before expiry. Option prices come from public daily
+  candles (previous close), not live quotes. On ₹1 lakh at 1% risk, no stock option lot fits
+  (the smallest one-lot risk was ~₹19,500). The plan then says "0 lots" and shows the capital
+  one lot would need.
+- **Upstox context** (`app/engine/market_context.py`, `GET /scan/context`, needs the daily
+  login): for each BUY/SELL stock, its rank in Upstox's stock-futures Smartlists (OI
+  gainers/losers, price gainers/losers, most active, top traded; best rank per list) with the
+  standard buildup reading, plus its 3 latest Upstox news headlines. Upstox has **no API for
+  its in-app research/advisory ideas**, so those are not shown, and this app does not scrape them.
+- Very high-priced stocks (e.g. PAGEIND at ~₹31,000) often show "too few trades": one share's
+  stop distance exceeds the ₹500 per-trade risk on ₹1 lakh test capital, so every signal is
+  rejected by the risk engine.
+
+## Options (F&O): paper trading and backtesting
+
+Added after the five original phases. Code: `app/engine/options.py`,
+`app/engine/option_backtest.py`, `app/api/routes/options.py`, dashboard `OptionsPanel`.
+**Paper and backtest only.** There is no live option order placement.
+
+**How it trades**
+- The strategy runs on the **underlying's** chart (share or index), never on the option
+  premium chart. A BUY signal buys a **CALL (CE)**. A SELL signal buys a **PUT (PE)**.
+- Options are **only bought, never sold/written**. A buyer's worst case is the premium
+  paid, while a writer's loss is open-ended and this risk engine can't bound it.
+- Contract choice: the nearest expiry with at least `OPTION_MIN_DAYS_TO_EXPIRY` (default 3)
+  days left, or the expiry you pick. Then the strike nearest spot (ATM), shifted by
+  `strike_offset` (+n = n strikes OTM, -n = n strikes ITM).
+- Exits fire when the **underlying** crosses the signal's own stop-loss/target, the same
+  levels the equity path uses. P&L is booked on the premium. Positions still open on
+  **expiry day are force-closed**. A position is never closed at a guessed price: if the
+  option's LTP is unavailable, it stays open until the next evaluation.
+- Sizing is in **whole lots**: expected loss/unit ≈ `delta × |entry − stop|`, capped at the
+  premium. Lots = per-trade risk budget ÷ loss per lot, also capped so premium outlay stays
+  ≤ `OPTION_MAX_PREMIUM_PCT` (default 25%) of capital. Delta comes from Black-Scholes
+  using the option's own market price (implied vol solved by bisection, no dividends,
+  rate `OPTION_RISK_FREE_RATE` = 6.5%). Paper trading and backtests use the identical estimate.
+- Every other risk gate still applies: halts, stale data, minimum R:R, max open positions,
+  one position per underlying, daily loss limit.
+
+**Endpoints**
+- `GET /options/contracts?underlying_key=...`: listed expiries and contracts (lot size, strikes).
+- `GET /options/signal?underlying_key=...&strike_offset=0[&expiry_date=]`: read-only preview
+  showing chosen contract, premium, delta, breakeven, lots and planned max loss. Places nothing.
+- `POST /options/paper/evaluate?...`: checks exits on open option paper positions for that
+  underlying, then opens a new one if the signal and risk engine allow it.
+- `GET /options/backtest?underlying_key&expiry_date&strike&from_date&to_date&unit&interval`:
+  backtests one listed CE+PE pair; `unit` may be `days`, `hours` or `minutes`.
+
+**Known limitations**
+- The delta estimate is first-order. It ignores gamma and **theta**, so a position held for
+  days can lose more than the planned max loss even if the underlying never hits the stop.
+- Options backtests can only use **currently-listed** contracts. Upstox serves expired-contract
+  history through a separate expired-instruments API, which this app doesn't use. So the
+  range is limited to the contract's life, and intraday units give more bars.
+- Backtest fills are conservative. Entry is at the option bar close plus slippage. A stop exit
+  uses the option bar's **low** and a target exit its close. Bars where the option didn't trade
+  are skipped.
+- The cost model is the same approximate equity model (`app/engine/costs.py`). Real F&O
+  charges (STT on premium, exchange fees) differ, so tune `COST_PCT_CHARGES` if needed.
+- The `/v2/option/contract` response shape was checked against Upstox's docs (Nov 2026), not
+  against a real account. `parse_contracts` skips rows it can't read rather than guessing.
+
 ## Known limitations & assumptions (Phase 2)
 
 - **LTP response shape**: Upstox's own v3 LTP docs have reportedly drifted from what the
@@ -300,6 +396,12 @@ docker-compose.yml   Postgres + backend
   **not** reset per trading day. For a multi-day daily-candle series this is not a
   textbook intraday VWAP; treat it as a longer-horizon mean-price reference until a
   per-day-reset version is added.
+- **Indices have no volume.** Upstox reports volume 0 for NIFTY, BANKNIFTY and other
+  indices, so VWAP and the volume-confirmed breakout can't vote there. On such data the
+  strategy uses the remaining 4 indicators (EMA trend, RSI, MACD) and still needs **3**
+  agreeing points, so strength is reported out of 4 and the signal says so in its reasons.
+  Lowering the bar to 2 of 4 was tried and rejected: it produced BUY signals on flat,
+  choppy data. Using the index futures' volume instead is a possible future improvement.
 - **Cost model** (`app/engine/costs.py`) is a configurable approximation for paper P&L
   only — not real brokerage/STT/exchange-charge figures, and must never be treated as such.
 - **Daily loss halt** (`DailyRiskState.loss_limit_halted`) resets automatically on IST date
@@ -369,3 +471,6 @@ section above first. Natural next steps if you want to keep going: real instrume
 search/lookup (right now you supply instrument keys directly), persisted backtest runs,
 a WebSocket-based live feed instead of 15s polling, and genuinely exercising this against
 a real (small, carefully watched) Upstox account.
+
+Options (F&O) paper trading and backtesting are also built (see the Options section).
+Live option order placement is deliberately not built.

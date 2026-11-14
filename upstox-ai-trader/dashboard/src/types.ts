@@ -20,6 +20,7 @@ export interface PaperPositionDTO {
   realized_pnl: number | null;
   mark_price?: number;
   unrealized_pnl?: number;
+  option?: OptionLegDTO | null;
 }
 
 export interface PaperAccount {
@@ -152,4 +153,198 @@ export interface LiveEvaluateResult {
   protective_order_failures?: string[];
   reconciled?: unknown[];
   funds_note?: string | null;
+}
+
+// --- Options (F&O), paper + backtest only ---
+
+export interface OptionContractDTO {
+  instrument_key: string;
+  underlying_key: string;
+  option_type: "CE" | "PE";
+  strike: number;
+  expiry: string;
+  lot_size: number;
+  trading_symbol: string;
+}
+
+export interface OptionLegDTO {
+  underlying_key: string;
+  option_type: "CE" | "PE";
+  strike: number;
+  expiry: string;
+  lot_size: number;
+  lots: number;
+  trading_symbol: string;
+  underlying_entry: number;
+  underlying_stop: number;
+  underlying_target: number;
+  entry_delta: number;
+}
+
+export interface OptionContractsResponse {
+  underlying_key: string;
+  expiries: string[];
+  contracts: OptionContractDTO[];
+}
+
+export interface OptionSignalPreview {
+  signal: Omit<Signal, "invalidation" | "data_timestamp" | "is_stale" | "generated_at" | "candles_used">;
+  signal_action?: string;
+  spot?: number;
+  contract: OptionContractDTO | null;
+  days_to_expiry?: number;
+  premium?: number;
+  delta?: number | null;
+  estimated_premium_stop?: number | null;
+  estimated_premium_target?: number | null;
+  breakeven_at_expiry?: number;
+  risk?: {
+    approved: boolean;
+    lots: number;
+    quantity: number;
+    max_loss_amount: number;
+    premium_outlay: number;
+    reasons: string[];
+  };
+  entry_result?: { action: string; reasons?: string[] };
+}
+
+export interface OptionEvaluateResult {
+  exits: PaperPositionDTO[];
+  signal_action: string | null;
+  entry_result: {
+    action: "opened" | "rejected" | "no_trade" | "error";
+    position?: PaperPositionDTO;
+    max_loss_amount?: number;
+    delta?: number | null;
+    reasons?: string[];
+  };
+}
+
+export interface OptionBacktestTradeDTO extends Omit<BacktestTradeDTO, "side"> {
+  contract: string;
+  side: "BUY CE" | "BUY PE";
+}
+
+export interface OptionBacktestResult {
+  underlying_key: string;
+  call: OptionContractDTO;
+  put: OptionContractDTO;
+  candles_used: { underlying: number; call: number; put: number };
+  starting_capital: number;
+  ending_capital: number;
+  rejected_signal_count: number;
+  metrics: { all: BacktestMetrics; train: BacktestMetrics | null; test: BacktestMetrics | null };
+  trades: OptionBacktestTradeDTO[];
+  equity_curve: { date: string; equity: number }[];
+}
+
+// --- Morning scan ---
+
+export interface ScanRunDTO {
+  id: number;
+  status: "RUNNING" | "DONE" | "FAILED";
+  trigger: "manual" | "scheduled";
+  started_at: string;
+  finished_at: string | null;
+  universe_size: number;
+  scanned_count: number;
+  error_count: number;
+  data_date: string | null;
+  message: string | null;
+}
+
+export type BacktestVerdict = "supports" | "mixed" | "against" | "too_few" | "";
+
+export interface ScanResultDTO {
+  instrument_key: string;
+  symbol: string;
+  name: string;
+  lot_size: number;
+  last_close: number | null;
+  action: "BUY" | "SELL" | "NO_TRADE" | "ERROR";
+  strength: number;
+  entry_price: number | null;
+  stop_loss: number | null;
+  target: number | null;
+  risk_reward: number | null;
+  reasons: string[];
+  backtest: {
+    trades: number;
+    win_rate: number | null;
+    profit_factor: number | null;
+    net_pnl: number | null;
+    max_drawdown_pct: number | null;
+    verdict: BacktestVerdict;
+  };
+  error: string | null;
+  option_plan: OptionPlanDTO | null;
+}
+
+export interface OptionPlanDTO {
+  status: "ok" | "too_big" | "no_contract";
+  reason: string;
+  contract: {
+    instrument_key: string;
+    trading_symbol: string;
+    option_type: "CE" | "PE";
+    strike: number;
+    expiry: string;
+    lot_size: number;
+  } | null;
+  premium: number | null;
+  premium_date: string | null;
+  delta: number | null;
+  lots: number;
+  quantity: number;
+  premium_outlay: number;
+  max_loss: number;
+  one_lot_risk: number;
+  risk_budget: number;
+  capital_needed_for_one_lot?: number;
+  breakeven: number | null;
+  days_to_expiry: number | null;
+  exit_by: string | null;
+  entry?: { limit_premium: number; reference_premium: number; stock_low: number; stock_high: number } | null;
+  exit?: {
+    stop_stock: number;
+    stop_premium_est: number;
+    stop_pnl_per_lot_est: number;
+    target_stock: number;
+    target_premium_est: number;
+    target_pnl_per_lot_est: number;
+    exit_by: string;
+    estimate_method: string;
+  } | null;
+  rules: string[];
+  candidates: { trading_symbol: string; strike: number; premium?: number; delta?: number | null; skipped?: string }[];
+}
+
+export interface ScanLatest {
+  run: ScanRunDTO | null;
+  results: ScanResultDTO[];
+}
+
+export interface SmartlistTag {
+  category: string;
+  label: string;
+  rank: number;
+  price_change_pct: number | null;
+  metric_key: string | null;
+  metric_change_pct: number | null;
+  reading: string | null;
+}
+
+export interface NewsItem {
+  heading: string;
+  summary: string;
+  link: string | null;
+  published_at: string | null;
+}
+
+export interface ScanContext {
+  run_id: number | null;
+  stocks: Record<string, { smartlists: SmartlistTag[]; news: NewsItem[] }>;
+  smartlist_timestamp: string | null;
+  errors: string[];
 }

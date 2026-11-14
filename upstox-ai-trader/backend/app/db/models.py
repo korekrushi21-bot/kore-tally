@@ -1,7 +1,7 @@
 from datetime import date, datetime
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, Integer, String, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
@@ -69,6 +69,37 @@ class PaperPosition(Base):
     exit_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
     costs: Mapped[float | None] = mapped_column(Float, nullable=True)
     realized_pnl: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Set only for option positions; None for plain equity positions.
+    option_leg: Mapped["PaperOptionLeg | None"] = relationship(
+        back_populates="position", uselist=False, lazy="selectin", cascade="all, delete-orphan"
+    )
+
+
+class PaperOptionLeg(Base):
+    """Option-specific details of a PaperPosition (a separate table, so the
+    existing paper_positions schema needs no migration). The position's own
+    stop_loss/target hold delta-projected PREMIUM levels for display; exits are
+    driven by the underlying_* levels stored here — see app/engine/options.py.
+    """
+
+    __tablename__ = "paper_option_legs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    position_id: Mapped[int] = mapped_column(ForeignKey("paper_positions.id"), unique=True)
+    underlying_key: Mapped[str] = mapped_column(String(64))
+    option_type: Mapped[str] = mapped_column(String(2))  # CE | PE
+    strike: Mapped[float] = mapped_column(Float)
+    expiry: Mapped[date] = mapped_column(Date)
+    lot_size: Mapped[int] = mapped_column(Integer)
+    lots: Mapped[int] = mapped_column(Integer)
+    trading_symbol: Mapped[str] = mapped_column(String(64), default="")
+    underlying_entry: Mapped[float] = mapped_column(Float)
+    underlying_stop: Mapped[float] = mapped_column(Float)
+    underlying_target: Mapped[float] = mapped_column(Float)
+    entry_delta: Mapped[float] = mapped_column(Float)
+
+    position: Mapped[PaperPosition] = relationship(back_populates="option_leg")
 
 
 class DailyRiskState(Base):
@@ -167,3 +198,59 @@ class LiveDailyRiskState(Base):
     realized_pnl: Mapped[float] = mapped_column(Float, default=0.0)
     trades_closed_count: Mapped[int] = mapped_column(Integer, default=0)
     loss_limit_halted: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class ScanRun(Base):
+    """One morning-scan pass over the F&O stock universe."""
+
+    __tablename__ = "scan_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="RUNNING")  # RUNNING | DONE | FAILED
+    trigger: Mapped[str] = mapped_column(String(16), default="manual")  # manual | scheduled
+    universe_size: Mapped[int] = mapped_column(Integer, default=0)
+    scanned_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_count: Mapped[int] = mapped_column(Integer, default=0)
+    data_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    message: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
+
+class ScanResult(Base):
+    """Signal + backtest summary for one stock in one scan run."""
+
+    __tablename__ = "scan_results"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("scan_runs.id"), index=True)
+    instrument_key: Mapped[str] = mapped_column(String(64))
+    symbol: Mapped[str] = mapped_column(String(32))
+    name: Mapped[str] = mapped_column(String(128), default="")
+    lot_size: Mapped[int] = mapped_column(Integer, default=0)
+    last_close: Mapped[float | None] = mapped_column(Float, nullable=True)
+    action: Mapped[str] = mapped_column(String(8))  # BUY | SELL | NO_TRADE | ERROR
+    strength: Mapped[float] = mapped_column(Float, default=0.0)
+    entry_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stop_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
+    target: Mapped[float | None] = mapped_column(Float, nullable=True)
+    risk_reward: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reasons: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    bt_trades: Mapped[int] = mapped_column(Integer, default=0)
+    bt_win_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bt_profit_factor: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bt_net_pnl: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bt_max_drawdown_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bt_verdict: Mapped[str] = mapped_column(String(16), default="")  # supports | mixed | against | too_few
+    error: Mapped[str | None] = mapped_column(String(256), nullable=True)
+
+
+class ScanOptionPlan(Base):
+    """The concrete option trade suggested for one scan result (a separate
+    table so scan_results needs no migration)."""
+
+    __tablename__ = "scan_option_plans"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    result_id: Mapped[int] = mapped_column(ForeignKey("scan_results.id"), unique=True, index=True)
+    plan: Mapped[dict] = mapped_column(JSON)
