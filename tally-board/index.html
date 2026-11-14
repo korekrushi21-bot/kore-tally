@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tally Board</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Tally Board</h1>
+    <div class="header-actions">
+      <button id="export-btn" class="secondary-btn" title="Download counters as JSON">Export</button>
+      <label class="secondary-btn" for="import-input" title="Load counters from JSON">Import</label>
+      <input id="import-input" type="file" accept="application/json" hidden />
+      <button id="add-counter-btn" class="primary-btn">+ New Counter</button>
+    </div>
+  </header>
+
+  <main id="board"></main>
+
+  <p id="empty-hint" class="hint">No counters yet. Click "+ New Counter" to start tracking something.</p>
+
+  <footer>
+    <span>Tip: click a card to select it, then use <kbd>+</kbd>/<kbd>-</kbd> or arrow keys.</span>
+  </footer>
+
+  <div id="toast" role="status"></div>
+
+  <template id="counter-template">
+    <section class="counter" tabindex="0">
+      <div class="counter-head">
+        <span class="drag-handle" title="Drag to reorder">&#10088;&#10088;</span>
+        <input class="counter-name" maxlength="40" />
+        <button class="delete-btn" title="Delete counter">&times;</button>
+      </div>
+      <div class="counter-value">0</div>
+      <div class="counter-controls">
+        <button class="dec-btn" title="Decrease (- or ArrowDown)">&minus;</button>
+        <button class="reset-btn" title="Reset to 0">reset</button>
+        <button class="inc-btn" title="Increase (+ or ArrowUp)">+</button>
+      </div>
+      <div class="counter-footer">
+        <div class="counter-step">
+          step
+          <input class="step-input" type="number" min="1" value="1" />
+        </div>
+        <div class="color-swatches"></div>
+      </div>
+    </section>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
