@@ -389,6 +389,72 @@ class VoucherService:
         self._audit("draft", record)
         return self.public_view(record)
 
+    # ---------- receipt / payment ----------
+
+    MONEY_ACCOUNT_GROUPS = ("Cash-in-Hand", "Bank Accounts", "Bank OD A/c")
+    BILLWISE_GROUPS = ("Sundry Debtors", "Sundry Creditors")
+
+    def draft_money(self, voucher_type: str, party: str, amount: Any, account: Optional[str] = None,
+                    narration: str = "", voucher_date: Optional[str] = None, source: str = "voice") -> Dict[str, Any]:
+        """Draft a Receipt (money in from a party) or Payment (money out to a party or expense). Only reads Tally."""
+        spec = get_spec(voucher_type)
+        if not getattr(spec, "money", False):
+            raise VoucherError("bad_request", "हा प्रकार Receipt/Payment नाही.")
+        if not self.writes_allowed(spec.key):
+            raise VoucherError("writes_disabled", f"{spec.label_mr} तयार करणे सध्या बंद आहे (config.json मध्ये चालू करा).")
+        money_cfg = self.config.get("money", {}) or {}
+        amt = round(self._number(amount, "रक्कम"), 2)
+        limit = float(money_cfg.get("max_amount", 200000))
+        if amt > limit:
+            raise VoucherError("amount_too_large", f"रक्कम {_inr(amt)} मर्यादेपेक्षा ({_inr(limit)}) जास्त आहे; हे Tally मध्ये हाताने करा.")
+
+        accounts: List[str] = []
+        banks: set = set()
+        for g in self.MONEY_ACCOUNT_GROUPS:
+            for l in self.tally.get_ledgers_under(g):
+                if l.name not in accounts:
+                    accounts.append(l.name)
+                    if g != "Cash-in-Hand":
+                        banks.add(l.name)
+        if not accounts:
+            raise VoucherError("no_cash_ledger", "Tally मध्ये Cash किंवा Bank खाते सापडले नाही.")
+        acct_set = {a.lower() for a in accounts}
+        party_names = [l.name for l in self.tally.get_ledgers() if l.name.lower() not in acct_set]
+        party_name = self._resolve(spec.party_label_mr, party, party_names)
+
+        spoken_acct = (account or money_cfg.get("default_account") or "").strip()
+        if spoken_acct:
+            acct_name = self._resolve("खाते (Cash/Bank)", spoken_acct, accounts)
+        else:
+            cash = [a for a in accounts if a not in banks]
+            if len(cash) == 1:
+                acct_name = cash[0]
+            else:
+                raise VoucherError("account_missing", "पैसे कोणत्या खात्यात/खात्यातून? " + ", ".join(accounts[:8]) + ".", accounts[:8])
+
+        billwise = {l.name for g in self.BILLWISE_GROUPS for l in self.tally.get_ledgers_under(g)}
+        warnings: List[str] = []
+        led = next((l for l in self.tally.get_ledgers() if l.name == party_name), None)
+        if led is not None and led.closing_balance:
+            side = "येणे (Dr)" if led.closing_balance < 0 else "देणे (Cr)"
+            warnings.append(f"{party_name} ची सध्याची बाकी {_inr(abs(led.closing_balance))} {side}.")
+        v_date = self._parse_date(voucher_date)
+
+        draft_id = secrets.token_hex(8)
+        record = {
+            "draft_id": draft_id, "voucher_type": spec.key, "tally_type": spec.tally_type, "kind": "money",
+            "party": party_name, "account": acct_name, "account_is_bank": acct_name in banks,
+            "party_billwise": party_name in billwise, "date": v_date.strftime("%Y%m%d"), "gst_header": {},
+            "narration": narration.strip() or f"Voice {spec.tally_type} ({source})",
+            "items": [], "taxes": [], "round_off": None, "taxable_total": amt, "tax_total": 0.0,
+            "total": amt, "warnings": warnings, "status": "drafted", "created_at": time.time(), "source": source,
+        }
+        with self._lock:
+            self._purge()
+            self._drafts[draft_id] = record
+        self._audit("draft", record)
+        return self.public_view(record)
+
     # ---------- confirm / cancel ----------
 
     def confirm(self, draft_id: str) -> Dict[str, Any]:
@@ -457,6 +523,13 @@ class VoucherService:
 
     def public_view(self, record: Dict[str, Any]) -> Dict[str, Any]:
         spec = get_spec(record["voucher_type"])
+        if record.get("kind") == "money":
+            return {
+                "ok": True, "draft_id": record["draft_id"], "voucher_type": spec.key, "label": spec.label_mr,
+                "party": record["party"], "account": record["account"], "date": record["date"], "items": [], "taxes": [],
+                "round_off": 0.0, "taxable_total": record["total"], "tax_total": 0.0, "total": record["total"],
+                "warnings": record["warnings"], "expires_in_seconds": int(self.draft_ttl), "say": self.read_back(record),
+            }
         return {
             "ok": True, "draft_id": record["draft_id"], "voucher_type": spec.key, "label": spec.label_mr,
             "party": record["party"], "date": record["date"],
@@ -471,6 +544,11 @@ class VoucherService:
 
     def read_back(self, record: Dict[str, Any]) -> str:
         spec = get_spec(record["voucher_type"])
+        if record.get("kind") == "money":
+            way = "मधून दिले" if spec.party_is_debit else "मध्ये जमा"
+            warn = (" सूचना: " + " ".join(record["warnings"])) if record["warnings"] else ""
+            return (f"{spec.label_mr}: {spec.party_label_mr} {record['party']}, रक्कम {_inr(record['total'])} रुपये, "
+                    f"{record['account']} {way}.{warn} सेव्ह करायचे असल्यास हो म्हणा.")
         def batch_text(l: Dict[str, Any]) -> str:
             if not l.get("batches"):
                 return ""

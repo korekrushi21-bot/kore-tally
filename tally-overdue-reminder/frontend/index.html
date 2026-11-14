@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="थकबाकी">
+<meta name="theme-color" content="#12395b">
+<link rel="manifest" href="/manifest.webmanifest">
+<title>Overdue Reminders</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-top">
+      <div>
+        <div class="greeting" id="greeting"></div>
+        <h1 id="page-title">थकबाकी व्यवस्थापन</h1>
+        <div class="app-subtitle" id="mode-badge">loading...</div>
+      </div>
+      <div>
+        <a href="calls.html" class="header-icon-btn" title="कॉल स्मरणपत्र" style="text-decoration:none">📞</a>
+        <button id="refresh-btn" class="header-icon-btn" title="Refresh from Tally">🔄</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div id="status" class="status"></div>
+
+    <!-- Home dashboard -->
+    <section id="home-view" class="app-view">
+      <h2 class="section-title">आजचा हिशोब एका नजरेत</h2>
+      <div class="stat-grid">
+        <div class="stat-card stat-card-red">
+          <div class="stat-icon">💰</div>
+          <div class="stat-value" id="stat-outstanding">₹0</div>
+          <div class="stat-label">एकूण थकीत रक्कम</div>
+          <div class="stat-sub" id="stat-outstanding-sub"></div>
+        </div>
+        <div class="stat-card stat-card-orange">
+          <div class="stat-icon">📈</div>
+          <div class="stat-value" id="stat-interest">₹0</div>
+          <div class="stat-label">व्याज</div>
+          <div class="stat-sub" id="stat-interest-sub"></div>
+        </div>
+      </div>
+      <div class="mini-stat-row">
+        <button class="mini-stat" data-view-target="customers" data-filter="overdue">
+          <div class="mini-stat-value" id="stat-overdue-count">0</div>
+          <div class="mini-stat-label">थकीत ग्राहक</div>
+        </button>
+        <button class="mini-stat" data-view-target="customers" data-filter="all">
+          <div class="mini-stat-value" id="stat-total-count">0</div>
+          <div class="mini-stat-label">एकूण ग्राहक</div>
+        </button>
+        <button class="mini-stat" data-view-target="customers" data-filter="oldest">
+          <div class="mini-stat-value" id="stat-max-days">0</div>
+          <div class="mini-stat-label">सर्वात जुनं (दिवस)</div>
+        </button>
+      </div>
+
+      <div class="section-header">
+        <h2 class="section-title">प्राधान्य वसुली</h2>
+        <button class="link-btn" data-view-target="customers">सर्व पहा →</button>
+      </div>
+      <div id="priority-list"></div>
+      <div id="priority-empty" class="empty-state" hidden></div>
+    </section>
+
+    <!-- Customers view -->
+    <section id="customers-view" class="app-view" hidden>
+      <div id="filter-chip" class="filter-chip" hidden>
+        <span>फक्त थकीत ग्राहक दाखवत आहे</span>
+        <button id="clear-filter-btn">सर्व दाखवा ✕</button>
+      </div>
+      <input id="search-box" class="search-box" type="search" placeholder="ग्राहकाचं नाव शोधा..." autocomplete="off">
+      <div id="customer-list"></div>
+      <div id="empty-state" class="empty-state" hidden></div>
+    </section>
+
+    <!-- Item Rate view -->
+    <section id="items-view" class="app-view" hidden>
+      <div id="items-status" class="status"></div>
+      <input id="item-search-box" class="search-box" type="search" placeholder="Search product name..." autocomplete="off">
+      <div class="table-scroll">
+        <table class="products-table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Purchase rate (incl. GST)</th>
+              <th>Bought from</th>
+              <th>Purchase date</th>
+              <th>Sale rate (incl. GST)</th>
+              <th>Sold to</th>
+              <th>Sale date</th>
+            </tr>
+          </thead>
+          <tbody id="items-body"></tbody>
+        </table>
+      </div>
+      <div id="items-empty" class="empty-state" hidden></div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav">
+    <button class="nav-tab active" data-view="home">
+      <span class="nav-tab-icon">🏠</span>
+      <span>होम</span>
+    </button>
+    <button class="nav-tab" data-view="customers">
+      <span class="nav-tab-icon">👥</span>
+      <span>ग्राहक</span>
+    </button>
+    <button class="nav-tab" data-view="items">
+      <span class="nav-tab-icon">📦</span>
+      <span>दर</span>
+    </button>
+  </nav>
+
+  <template id="priority-card-template">
+    <div class="priority-card">
+      <div class="priority-card-top">
+        <div class="priority-avatar"></div>
+        <div class="priority-info">
+          <div class="priority-name"></div>
+          <div class="priority-sub"></div>
+        </div>
+        <div class="priority-amount-block">
+          <div class="priority-amount"></div>
+          <div class="priority-days"></div>
+        </div>
+      </div>
+      <div class="priority-actions">
+        <button class="priority-btn priority-btn-message">💬 मेसेज पाठवा</button>
+        <button class="priority-btn priority-btn-copy">📋 कॉपी करा</button>
+        <button class="priority-btn priority-btn-details">तपशील</button>
+      </div>
+    </div>
+  </template>
+
+  <template id="customer-card-template">
+    <div class="customer-card">
+      <div class="customer-summary">
+        <div class="customer-name-block">
+          <div class="customer-name"></div>
+          <div class="customer-meta"></div>
+        </div>
+        <div class="customer-amounts">
+          <div class="amount-block">
+            <span class="amount-label">Outstanding</span>
+            <span class="amount-value outstanding"></span>
+          </div>
+          <div class="amount-block">
+            <span class="amount-label">Interest</span>
+            <span class="amount-value interest"></span>
+          </div>
+          <div class="amount-block">
+            <span class="amount-label">Total Payable</span>
+            <span class="amount-value payable"></span>
+          </div>
+        </div>
+        <button class="secondary-btn details-toggle">Details</button>
+      </div>
+      <div class="customer-details" hidden>
+        <h3>Interest breakdown by bill (estimated)</h3>
+        <table class="bills-table">
+          <thead>
+            <tr><th>Bill</th><th>Date</th><th>Amount</th><th>Due date</th><th>Days overdue</th><th>Interest</th></tr>
+          </thead>
+          <tbody class="bills-body"></tbody>
+        </table>
+        <div class="bills-note">Estimated by assuming payments clear the oldest bill first (Tally doesn't track this here) - see README.</div>
+
+        <h3>All invoices</h3>
+        <table class="invoices-table">
+          <thead>
+            <tr><th>Voucher #</th><th>Date</th><th>Items</th></tr>
+          </thead>
+          <tbody class="invoices-body"></tbody>
+        </table>
+        <div class="invoices-empty" hidden>No recent invoices found for this customer.</div>
+
+        <h3>Reminder message</h3>
+        <textarea class="reminder-text" rows="8" readonly></textarea>
+        <div class="detail-actions">
+          <button class="secondary-btn message-btn">💬 WhatsApp वर पाठवा</button>
+          <button class="secondary-btn copy-btn">कॉपी करा</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <div id="login-overlay" class="login-overlay" hidden>
+    <form id="login-form" class="login-card">
+      <h2>लॉगिन</h2>
+      <p class="login-hint">पुढे जाण्यासाठी password टाका</p>
+      <input id="login-password" type="password" autocomplete="current-password" placeholder="Password" required>
+      <div id="login-error" class="login-error" hidden></div>
+      <button type="submit" class="login-btn">लॉगिन</button>
+    </form>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

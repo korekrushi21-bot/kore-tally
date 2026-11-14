@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Word Chain</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Word Chain</h1>
+    <div class="stats">
+      <span>Score <strong id="score">0</strong></span>
+      <span>Best <strong id="best-score">0</strong></span>
+      <span>Streak <strong id="streak">0</strong></span>
+    </div>
+  </header>
+
+  <main>
+    <section id="start-screen" class="screen">
+      <h2>Chain words together</h2>
+      <p>Type a word that starts with the <strong>last letter</strong> of the word before it. No repeats, no made-up words. Beat the clock — it gets faster the longer you last.</p>
+      <button id="start-btn" class="primary-btn">Start Game</button>
+    </section>
+
+    <section id="game-screen" class="screen hidden">
+      <div class="timer-bar"><div id="timer-fill"></div></div>
+      <div id="chain-trail"></div>
+      <div class="next-letter-display">
+        Next word starts with <span id="next-letter">?</span>
+      </div>
+      <form id="word-form" autocomplete="off">
+        <input id="word-input" autocomplete="off" placeholder="Type a word…" maxlength="30" />
+      </form>
+      <p id="feedback"></p>
+    </section>
+
+    <section id="end-screen" class="screen hidden">
+      <h2 id="end-title">Time's up!</h2>
+      <p>Final score: <strong id="final-score">0</strong></p>
+      <p id="new-best" class="hidden">New best score!</p>
+      <button id="restart-btn" class="primary-btn">Play Again</button>
+    </section>
+  </main>
+
+  <script src="words.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

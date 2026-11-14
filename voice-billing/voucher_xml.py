@@ -26,7 +26,75 @@ def money(value: float) -> str:
     return f"{value:.2f}"
 
 
+def build_money_xml(company: str, spec, v: Dict[str, Any]) -> str:
+    """Receipt / Payment voucher: one party (or expense) ledger and one Cash / Bank ledger, same amount.
+    `v` keys: date (YYYYMMDD), party, account, total, narration, party_billwise (bool), account_is_bank (bool)."""
+    amt = float(v["total"])
+    party_debit = spec.party_is_debit                      # payment: party Dr; receipt: party Cr
+    party_amt = money(-amt if party_debit else amt)        # Dr is negative in Tally XML
+    acct_amt = money(amt if party_debit else -amt)
+    party_flag = "Yes" if party_debit else "No"
+    acct_flag = "No" if party_debit else "Yes"
+    bill = (f"""
+       <BILLALLOCATIONS.LIST>
+        <BILLTYPE>On Account</BILLTYPE>
+        <AMOUNT>{party_amt}</AMOUNT>
+       </BILLALLOCATIONS.LIST>""" if v.get("party_billwise") else "")
+    bank = (f"""
+       <BANKALLOCATIONS.LIST>
+        <DATE>{v['date']}</DATE>
+        <INSTRUMENTDATE>{v['date']}</INSTRUMENTDATE>
+        <TRANSACTIONTYPE>Others</TRANSACTIONTYPE>
+        <PAYMENTFAVOURING>{_esc(v['party'])}</PAYMENTFAVOURING>
+        <AMOUNT>{acct_amt}</AMOUNT>
+       </BANKALLOCATIONS.LIST>""" if v.get("account_is_bank") else "")
+    company_tag = f"<SVCURRENTCOMPANY>{_esc(company)}</SVCURRENTCOMPANY>" if company else ""
+    return f"""<ENVELOPE>
+ <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+ <BODY>
+  <IMPORTDATA>
+   <REQUESTDESC>
+    <REPORTNAME>Vouchers</REPORTNAME>
+    <STATICVARIABLES>{company_tag}</STATICVARIABLES>
+   </REQUESTDESC>
+   <REQUESTDATA>
+    <TALLYMESSAGE xmlns:UDF="TallyUDF">
+     <VOUCHER VCHTYPE="{_esc(spec.tally_type)}" ACTION="Create" OBJVIEW="Accounting Voucher View">
+      <DATE>{v['date']}</DATE>
+      <EFFECTIVEDATE>{v['date']}</EFFECTIVEDATE>
+      <VOUCHERTYPENAME>{_esc(spec.tally_type)}</VOUCHERTYPENAME>
+      <PARTYLEDGERNAME>{_esc(v['party'])}</PARTYLEDGERNAME>
+      <PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW>
+      <VOUCHERNUMBERSERIES>Default</VOUCHERNUMBERSERIES>
+      <NARRATION>{_esc(v.get('narration', ''))}</NARRATION>
+      <ALLLEDGERENTRIES.LIST>
+       <LEDGERNAME>{_esc(v['party'])}</LEDGERNAME>
+       <ISDEEMEDPOSITIVE>{party_flag}</ISDEEMEDPOSITIVE>
+       <ISLASTDEEMEDPOSITIVE>{party_flag}</ISLASTDEEMEDPOSITIVE>
+       <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
+       <AMOUNT>{party_amt}</AMOUNT>{bill}
+      </ALLLEDGERENTRIES.LIST>
+      <ALLLEDGERENTRIES.LIST>
+       <LEDGERNAME>{_esc(v['account'])}</LEDGERNAME>
+       <ISDEEMEDPOSITIVE>{acct_flag}</ISDEEMEDPOSITIVE>
+       <ISLASTDEEMEDPOSITIVE>{acct_flag}</ISLASTDEEMEDPOSITIVE>
+       <AMOUNT>{acct_amt}</AMOUNT>{bank}
+      </ALLLEDGERENTRIES.LIST>
+     </VOUCHER>
+    </TALLYMESSAGE>
+   </REQUESTDATA>
+  </IMPORTDATA>
+ </BODY>
+</ENVELOPE>"""
+
+
 def build_import_xml(company: str, spec: VoucherSpec, v: Dict[str, Any]) -> str:
+    if getattr(spec, "money", False):
+        return build_money_xml(company, spec, v)
+    return _build_invoice_xml(company, spec, v)
+
+
+def _build_invoice_xml(company: str, spec: VoucherSpec, v: Dict[str, Any]) -> str:
     """`v` keys: date (YYYYMMDD), party, narration, items[{name, unit, quantity, rate, amount, ledger}],
     taxes[{ledger, amount}], round_off {ledger, amount (may be negative)} optional, total.
     Amounts are positive (except round_off); this function applies the Dr/Cr signs."""
