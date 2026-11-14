@@ -26,7 +26,27 @@ const VERDICT_LABEL: Record<BacktestVerdict, { text: string; pill: string; help:
   "": { text: "—", pill: "neutral", help: "" },
 };
 
-type Filter = "supported" | "all_signals" | "everything";
+type Filter = "top" | "supported" | "all_signals" | "everything";
+const TOP_N = 15;
+const PRICE_KEY = "scan.maxSharePrice";
+const DEFAULT_MAX_PRICE = 500;
+const WIN_KEY = "scan.minWinRatePct";
+const DEFAULT_MIN_WIN = 50;
+const MIN_TRADES_FOR_WIN_RATE = 5; // a win rate from 1-4 trades means nothing
+
+function loadNumber(key: string, fallback: number): number | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return fallback;
+    return raw === "" ? null : Number(raw) || null;
+  } catch {
+    return fallback;
+  }
+}
+
+function loadMaxPrice(): number | null {
+  return loadNumber(PRICE_KEY, DEFAULT_MAX_PRICE);
+}
 
 function pct(n: number | null | undefined, digits = 0) {
   return n === null || n === undefined ? "—" : `${(n * 100).toFixed(digits)}%`;
@@ -34,7 +54,30 @@ function pct(n: number | null | undefined, digits = 0) {
 
 export function MorningScanPanel({ connected }: { connected: boolean }) {
   const [data, setData] = useState<ScanLatest | null>(null);
-  const [filter, setFilter] = useState<Filter>("supported");
+  const [filter, setFilter] = useState<Filter>("top");
+  const [maxPrice, setMaxPrice] = useState<number | null>(loadMaxPrice);
+
+  const [minWin, setMinWin] = useState<number | null>(() => loadNumber(WIN_KEY, DEFAULT_MIN_WIN));
+
+  function changeMinWin(value: string) {
+    const next = value.trim() === "" ? null : Math.min(100, Math.max(1, Number(value) || 0)) || null;
+    setMinWin(next);
+    try {
+      localStorage.setItem(WIN_KEY, next === null ? "" : String(next));
+    } catch {
+      /* per-viewer convenience only */
+    }
+  }
+
+  function changeMaxPrice(value: string) {
+    const next = value.trim() === "" ? null : Math.max(1, Number(value) || 0) || null;
+    setMaxPrice(next);
+    try {
+      localStorage.setItem(PRICE_KEY, next === null ? "" : String(next));
+    } catch {
+      /* per-viewer convenience only */
+    }
+  }
   const [expanded, setExpanded] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
@@ -84,11 +127,31 @@ export function MorningScanPanel({ connected }: { connected: boolean }) {
     }
   }
 
-  const results = data?.results ?? [];
+  const allResults = data?.results ?? [];
+  const priced = useMemo(
+    () => (maxPrice === null ? allResults : allResults.filter((r) => r.last_close !== null && r.last_close <= maxPrice)),
+    [allResults, maxPrice]
+  );
+  const results = useMemo(
+    () =>
+      minWin === null
+        ? priced
+        : priced.filter(
+            (r) =>
+              r.backtest.trades >= MIN_TRADES_FOR_WIN_RATE &&
+              r.backtest.win_rate !== null &&
+              r.backtest.win_rate * 100 > minWin
+          ),
+    [priced, minWin]
+  );
   const signals = useMemo(() => results.filter((r) => r.action === "BUY" || r.action === "SELL"), [results]);
   const supported = useMemo(() => signals.filter((r) => r.backtest.verdict === "supports"), [signals]);
   const losingStocks = useMemo(() => results.filter((r) => r.backtest.verdict === "against").length, [results]);
-  const shown = filter === "supported" ? supported : filter === "all_signals" ? signals : results;
+  // Signals arrive ranked: profitable backtest first, then break-even, too-few, lost-money;
+  // within each, by strength. "Top" always shows at least TOP_N (or every signal if fewer).
+  const top = useMemo(() => signals.slice(0, Math.max(TOP_N, supported.length)), [signals, supported]);
+  const shown =
+    filter === "top" ? top : filter === "supported" ? supported : filter === "all_signals" ? signals : results;
   const run = data?.run;
 
   return (
@@ -152,13 +215,90 @@ export function MorningScanPanel({ connected }: { connected: boolean }) {
             <p className="muted">Some Upstox data could not be loaded: {context.errors.join("; ")}</p>
           )}
           <div className="row">
+            <label className="muted">
+              Share price up to ₹{" "}
+              <input
+                type="number"
+                min={1}
+                value={maxPrice ?? ""}
+                placeholder="any"
+                onChange={(e) => changeMaxPrice(e.target.value)}
+                style={{ width: 90 }}
+                aria-label="Maximum share price"
+              />
+            </label>
+            <label className="muted">
+              Backtest win rate above{" "}
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={minWin ?? ""}
+                placeholder="any"
+                onChange={(e) => changeMinWin(e.target.value)}
+                style={{ width: 70 }}
+                aria-label="Minimum backtest win rate percent"
+              />{" "}
+              %
+            </label>
+            <span className="muted">
+              {results.length} of {allResults.length} stocks
+              {(maxPrice !== null || minWin !== null) && (
+                <>
+                  {" · "}
+                  <a
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      changeMaxPrice("");
+                      changeMinWin("");
+                    }}
+                  >
+                    clear filters
+                  </a>
+                </>
+              )}
+            </span>
+          </div>
+          {minWin !== null && (
+            <p className="muted">
+              Win rate counts only stocks with at least {MIN_TRADES_FOR_WIN_RATE} backtest trades. This strategy aims for
+              targets twice the stop distance, so it can be profitable with a win rate around 35%; a high win rate alone
+              does not mean profit, check the profit factor too.
+            </p>
+          )}
+          {signals.length === 0 && (maxPrice !== null || minWin !== null) && (
+            <div className="error-banner" style={{ background: "var(--amber-bg)", color: "var(--amber)" }}>
+              No stock matches these filters today
+              {maxPrice !== null ? ` (share price up to ₹${maxPrice}` : " ("}
+              {minWin !== null ? `${maxPrice !== null ? ", " : ""}backtest win rate above ${minWin}%` : ""}). Nothing is
+              suggested rather than showing trades that don't meet them.
+            </div>
+          )}
+          {maxPrice !== null && supported.length === 0 && signals.length > 0 && (
+            <div className="error-banner" style={{ background: "var(--amber-bg)", color: "var(--amber)" }}>
+              None of today's {signals.length} signals on stocks up to ₹{maxPrice} has a profitable backtest. They are
+              listed below by rank, but on these stocks the strategy has mostly lost money in the past.
+            </div>
+          )}
+          <div className="row">
             <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)} aria-label="Filter">
-              <option value="supported">Signals with a profitable backtest ({supported.length})</option>
+              <option value="top">Top {top.length} suggestions (best backtest first)</option>
+              <option value="supported">Only signals with a profitable backtest ({supported.length})</option>
               <option value="all_signals">All BUY/SELL signals ({signals.length})</option>
               <option value="everything">Every stock scanned ({results.length})</option>
             </select>
           </div>
 
+          {filter === "top" && supported.length > 0 && top.length > supported.length && (
+            <p className="muted">
+              The first {supported.length} have a profitable backtest. The rest are the next-best signals and are shown
+              because you asked for at least {TOP_N}; check each one's backtest label, several lost money in the past.
+            </p>
+          )}
+          {filter === "top" && signals.length > 0 && signals.length < TOP_N && (
+            <p className="muted">Only {signals.length} stocks gave a BUY/SELL signal today, so fewer than {TOP_N} are shown.</p>
+          )}
           {shown.length === 0 ? (
             <p className="muted">Nothing in this view today.</p>
           ) : (
