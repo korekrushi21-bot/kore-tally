@@ -1,0 +1,18 @@
+# Repo-wide ignores. Each project may also have its own .gitignore.
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Stray run logs at the repo root
+/err.log
+/out.log
+
+# Voice billing: generated bill XML (real party/amount data) and code backups
+voice-billing/last_bill.xml
+voice-billing/backups_before_*/
+
+# Portrait enhance: output photos (personal images, large)
+portrait-enhance/*.jpg
+portrait-enhance/*.jpeg
+portrait-enhance/*.png
