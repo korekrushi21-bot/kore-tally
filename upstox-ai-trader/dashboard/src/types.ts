@@ -238,3 +238,49 @@ export interface OptionBacktestResult {
   trades: OptionBacktestTradeDTO[];
   equity_curve: { date: string; equity: number }[];
 }
+
+// --- Morning scan ---
+
+export interface ScanRunDTO {
+  id: number;
+  status: "RUNNING" | "DONE" | "FAILED";
+  trigger: "manual" | "scheduled";
+  started_at: string;
+  finished_at: string | null;
+  universe_size: number;
+  scanned_count: number;
+  error_count: number;
+  data_date: string | null;
+  message: string | null;
+}
+
+export type BacktestVerdict = "supports" | "mixed" | "against" | "too_few" | "";
+
+export interface ScanResultDTO {
+  instrument_key: string;
+  symbol: string;
+  name: string;
+  lot_size: number;
+  last_close: number | null;
+  action: "BUY" | "SELL" | "NO_TRADE" | "ERROR";
+  strength: number;
+  entry_price: number | null;
+  stop_loss: number | null;
+  target: number | null;
+  risk_reward: number | null;
+  reasons: string[];
+  backtest: {
+    trades: number;
+    win_rate: number | null;
+    profit_factor: number | null;
+    net_pnl: number | null;
+    max_drawdown_pct: number | null;
+    verdict: BacktestVerdict;
+  };
+  error: string | null;
+}
+
+export interface ScanLatest {
+  run: ScanRunDTO | null;
+  results: ScanResultDTO[];
+}

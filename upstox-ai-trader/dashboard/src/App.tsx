@@ -10,6 +10,7 @@ import { BrokerPanel } from "./components/BrokerPanel";
 import { SignalPanel } from "./components/SignalPanel";
 import { BacktestPanel } from "./components/BacktestPanel";
 import { OptionsPanel } from "./components/OptionsPanel";
+import { MorningScanPanel } from "./components/MorningScanPanel";
 import { LiveTradingPanel } from "./components/LiveTradingPanel";
 
 const POLL_INTERVAL_MS = 15_000;
@@ -61,6 +62,11 @@ function App() {
           </div>
         </div>
         <StatusBar status={authStatus} onDisconnect={disconnect} />
+      </div>
+
+      <div className="card">
+        <h2>Morning scan: today's signals across F&amp;O stocks</h2>
+        <MorningScanPanel />
       </div>
 
       <div className="card">

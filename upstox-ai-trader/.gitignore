@@ -10,5 +10,7 @@ backend/.venv/
 # other than backend/ (e.g. from a launcher script's working directory).
 upstox_trader.db
 upstox_trader.db.bak*
+backend/data/
+backend/logs/
 dashboard/node_modules/
 dashboard/dist/

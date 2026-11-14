@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import auth, backtest, live, market, options, paper, strategy
+from app.api.routes import auth, backtest, live, market, options, paper, scan, strategy
 from app.core.config import get_settings
 from app.db.base import Base, engine
 
@@ -35,6 +35,7 @@ app.include_router(paper.router)
 app.include_router(backtest.router)
 app.include_router(live.router)
 app.include_router(options.router)
+app.include_router(scan.router)
 
 _static_dir = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=_static_dir), name="static")

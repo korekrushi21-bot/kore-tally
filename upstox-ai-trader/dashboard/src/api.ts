@@ -12,6 +12,8 @@ import type {
   OptionSignalPreview,
   PaperAccount,
   PaperPositionDTO,
+  ScanLatest,
+  ScanRunDTO,
   Signal,
   UpstoxPassthrough,
 } from "./types";
@@ -145,6 +147,9 @@ export const api = {
     if (p.startingCapital) qs.set("starting_capital", String(p.startingCapital));
     return request<OptionBacktestResult>(`/options/backtest?${qs.toString()}`);
   },
+
+  scanLatest: () => request<ScanLatest>("/scan/latest"),
+  scanRun: () => request<ScanRunDTO>("/scan/run", { method: "POST" }),
 
   liveStatus: () => request<LiveStatus>("/live/status"),
   livePreflight: () => request<LivePreflight>("/live/preflight"),

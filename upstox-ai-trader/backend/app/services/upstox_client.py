@@ -99,7 +99,11 @@ class UpstoxClient:
         path = f"/v3/historical-candle/{key}/{unit}/{interval}/{to_date}"
         if from_date:
             path += f"/{from_date}"
-        return await self._get(path)
+        # Upstox serves v3 historical candles without an access token (checked
+        # Nov 2026), so a client created with no token can still fetch them.
+        # That is what lets the 9:00 morning scan run before the daily login.
+        # If Upstox starts requiring auth, this returns its 401 as an error.
+        return await self._request("GET", path, allow_anonymous=True)
 
     async def get_intraday_candles(self, instrument_key: str, unit: str, interval: int) -> dict:
         key = quote(instrument_key, safe="")
@@ -166,15 +170,14 @@ class UpstoxClient:
         json_body: dict | None = None,
         extra_headers: dict | None = None,
         base: str | None = None,
+        allow_anonymous: bool = False,
     ) -> dict:
-        if not self._access_token:
+        if not self._access_token and not allow_anonymous:
             raise UpstoxAPIError(401, "No access token supplied to UpstoxClient")
         url = f"{base or self._settings.upstox_api_base}{path}"
-        headers = {
-            "Accept": "application/json",
-            "Authorization": f"Bearer {self._access_token}",
-            **(extra_headers or {}),
-        }
+        headers = {"Accept": "application/json", **(extra_headers or {})}
+        if self._access_token:
+            headers["Authorization"] = f"Bearer {self._access_token}"
         if json_body is not None:
             headers["Content-Type"] = "application/json"
         async with httpx.AsyncClient(timeout=15) as client:

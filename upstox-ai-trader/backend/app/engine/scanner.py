@@ -1,0 +1,226 @@
+"""Morning scanner: runs the strategy over every F&O stock and backtests it on
+that same stock, so each signal comes with evidence of how this exact rule set
+has actually done on that stock.
+
+For each stock:
+  * signal   - `generate_signal` on the last ~150 calendar days of daily
+               candles, the same window the dashboard's Strategy Signal uses, so
+               a stock's scan result matches what "Get Signal" shows.
+  * backtest - `run_backtest` (same strategy + risk engine as paper trading)
+               over the last `backtest_years` years.
+  * verdict  - a plain summary of that backtest: "supports", "mixed",
+               "against" or "too_few" trades to judge.
+
+These are rule-based signals, not recommendations. The verdict is shown next
+to every signal precisely so a BUY on a stock where the strategy has lost money
+historically is visibly marked as such.
+"""
+import asyncio
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta, timezone
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.core.exceptions import UpstoxAPIError
+from app.db.models import ScanResult, ScanRun
+from app.engine.backtest import run_backtest
+from app.engine.candle import Candle, candles_from_upstox
+from app.engine.strategy import MIN_CANDLES, generate_signal
+
+SIGNAL_WINDOW_DAYS = 150
+VERDICT_RANK = {"supports": 0, "mixed": 1, "too_few": 2, "against": 3, "": 4}
+
+
+@dataclass
+class ScanConfig:
+    backtest_years: int = 2
+    starting_capital: float = 100_000.0
+    max_concurrency: int = 3
+    min_seconds_between_requests: float = 0.25
+    min_trades_for_verdict: int = 5
+    supports_profit_factor: float = 1.3
+
+
+@dataclass
+class StockOutcome:
+    action: str
+    strength: float = 0.0
+    last_close: float | None = None
+    data_date: date | None = None
+    signal: dict = field(default_factory=dict)
+    backtest: dict = field(default_factory=dict)
+    verdict: str = ""
+    error: str | None = None
+
+
+def backtest_verdict(metrics: dict, config: ScanConfig) -> str:
+    trades = metrics.get("total_trades", 0)
+    if trades < config.min_trades_for_verdict:
+        return "too_few"
+    pf = metrics.get("profit_factor")
+    net = metrics.get("net_pnl", 0.0)
+    if pf is None:  # no losing trades at all
+        return "supports" if net > 0 else "mixed"
+    if pf >= config.supports_profit_factor and net > 0:
+        return "supports"
+    if pf >= 1.0:
+        return "mixed"
+    return "against"
+
+
+def analyse_stock(candles: list[Candle], instrument_key: str, config: ScanConfig) -> StockOutcome:
+    if len(candles) <= MIN_CANDLES:
+        return StockOutcome(action="NO_TRADE", error=f"Only {len(candles)} candles available")
+
+    last = candles[-1]
+    cutoff = last.timestamp - timedelta(days=SIGNAL_WINDOW_DAYS)
+    recent = [c for c in candles if c.timestamp >= cutoff]
+    sig = generate_signal(recent, instrument_key)
+
+    result = run_backtest(candles, instrument_key, config.starting_capital)
+    metrics = result.metrics["all"]
+
+    return StockOutcome(
+        action=sig.action,
+        strength=sig.strength,
+        last_close=last.close,
+        data_date=last.timestamp.date(),
+        signal={
+            "entry_price": sig.entry_price,
+            "stop_loss": sig.stop_loss,
+            "target": sig.target,
+            "risk_reward": sig.risk_reward,
+            "reasons": sig.reasons,
+        },
+        backtest=metrics,
+        verdict=backtest_verdict(metrics, config),
+    )
+
+
+class _Throttle:
+    def __init__(self, min_interval: float):
+        self._min_interval = min_interval
+        self._lock = asyncio.Lock()
+        self._last = 0.0
+
+    async def wait(self):
+        async with self._lock:
+            loop = asyncio.get_running_loop()
+            delay = self._last + self._min_interval - loop.time()
+            if delay > 0:
+                await asyncio.sleep(delay)
+            self._last = loop.time()
+
+
+async def _fetch_candles(client, instrument_key: str, to_day: date, from_day: date, throttle: _Throttle) -> list[Candle]:
+    for attempt in range(3):
+        await throttle.wait()
+        try:
+            response = await client.get_historical_candles(
+                instrument_key, "days", 1, to_day.isoformat(), from_day.isoformat()
+            )
+            return candles_from_upstox(response.get("data", {}).get("candles", []))
+        except UpstoxAPIError as exc:
+            if exc.status_code == 429 and attempt < 2:  # rate limited: back off and retry
+                await asyncio.sleep(2 * (attempt + 1))
+                continue
+            raise
+    return []
+
+
+async def run_scan(
+    db: Session,
+    client,
+    universe: list[dict],
+    today: date,
+    trigger: str = "manual",
+    config: ScanConfig | None = None,
+    run: ScanRun | None = None,
+) -> ScanRun:
+    config = config or ScanConfig()
+    if run is None:
+        run = ScanRun(trigger=trigger, status="RUNNING")
+        db.add(run)
+    run.universe_size = len(universe)
+    db.commit()
+
+    from_day = today - timedelta(days=365 * config.backtest_years + SIGNAL_WINDOW_DAYS)
+    throttle = _Throttle(config.min_seconds_between_requests)
+    semaphore = asyncio.Semaphore(config.max_concurrency)
+
+    async def scan_one(stock: dict) -> tuple[dict, StockOutcome]:
+        async with semaphore:
+            try:
+                candles = await _fetch_candles(client, stock["instrument_key"], today, from_day, throttle)
+                return stock, analyse_stock(candles, stock["instrument_key"], config)
+            except UpstoxAPIError as exc:
+                return stock, StockOutcome(action="ERROR", error=f"Upstox {exc.status_code}: {exc.message}"[:256])
+            except Exception as exc:  # one bad stock must not kill the whole scan
+                return stock, StockOutcome(action="ERROR", error=f"{type(exc).__name__}: {exc}"[:256])
+
+    try:
+        outcomes = await asyncio.gather(*(scan_one(s) for s in universe))
+        data_dates = []
+        for stock, outcome in outcomes:
+            db.add(_result_row(run.id, stock, outcome))
+            if outcome.action == "ERROR":
+                run.error_count += 1
+            else:
+                run.scanned_count += 1
+            if outcome.data_date:
+                data_dates.append(outcome.data_date)
+        run.data_date = max(data_dates) if data_dates else None
+        run.status = "DONE" if run.scanned_count else "FAILED"
+        if not run.scanned_count:
+            run.message = "No stock could be scanned; see per-stock errors"
+    except Exception as exc:
+        run.status = "FAILED"
+        run.message = f"{type(exc).__name__}: {exc}"[:512]
+    run.finished_at = datetime.now(timezone.utc)
+    db.commit()
+    return run
+
+
+def _result_row(run_id: int, stock: dict, outcome: StockOutcome) -> ScanResult:
+    sig, bt = outcome.signal, outcome.backtest
+    return ScanResult(
+        run_id=run_id,
+        instrument_key=stock["instrument_key"],
+        symbol=stock.get("symbol", ""),
+        name=stock.get("name", ""),
+        lot_size=stock.get("lot_size", 0),
+        last_close=outcome.last_close,
+        action=outcome.action,
+        strength=outcome.strength,
+        entry_price=sig.get("entry_price"),
+        stop_loss=sig.get("stop_loss"),
+        target=sig.get("target"),
+        risk_reward=sig.get("risk_reward"),
+        reasons=sig.get("reasons"),
+        bt_trades=bt.get("total_trades", 0),
+        bt_win_rate=bt.get("win_rate"),
+        bt_profit_factor=bt.get("profit_factor"),
+        bt_net_pnl=bt.get("net_pnl"),
+        bt_max_drawdown_pct=bt.get("max_drawdown_pct"),
+        bt_verdict=outcome.verdict,
+        error=outcome.error,
+    )
+
+
+def latest_run(db: Session) -> ScanRun | None:
+    return db.scalar(select(ScanRun).order_by(ScanRun.id.desc()).limit(1))
+
+
+def ranked_results(db: Session, run_id: int) -> list[ScanResult]:
+    rows = list(db.scalars(select(ScanResult).where(ScanResult.run_id == run_id)))
+    return sorted(
+        rows,
+        key=lambda r: (
+            0 if r.action in ("BUY", "SELL") else 1,
+            VERDICT_RANK.get(r.bt_verdict, 4),
+            -(r.strength or 0),
+            -(r.bt_profit_factor if r.bt_profit_factor is not None else 99),
+            r.symbol,
+        ),
+    )

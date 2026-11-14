@@ -290,6 +290,37 @@ dashboard/
 docker-compose.yml   Postgres + backend
 ```
 
+## Morning scan (F&O stocks)
+
+Code: `app/engine/scanner.py`, `app/services/instruments.py`, `app/api/routes/scan.py`,
+`app/scan_cli.py`, dashboard `MorningScanPanel` (top of the page).
+
+- **What it does:** every weekday at 9:00 it scans every stock that has F&O contracts (~218,
+  from Upstox's public instrument file, cached daily in `backend/data/`). For each stock it
+  runs the same strategy as "Get Signal" on the last ~150 days of daily candles, and
+  backtests that strategy on the same stock over the last 2 years.
+- **Output:** each BUY/SELL signal is shown with a backtest verdict: profitable (profit
+  factor ≥ 1.3, ≥ 5 trades), break-even, lost money, or too few trades. Signals with a
+  profitable backtest are listed first. These are **rule-based signals, not
+  recommendations**. Nothing is ordered.
+- **No login needed:** Upstox serves v3 daily candles without an access token (checked
+  Nov 2026), so the 9:00 run works before the daily OAuth login. If you are logged in, the
+  session token is used anyway. If Upstox ever starts requiring auth there, the scan's
+  per-stock errors will say "Upstox 401".
+- **Schedule:** Windows Task Scheduler task **"Upstox Morning Scan"**, weekdays 9:00, runs
+  `Morning Scan.cmd` and appends a summary line to `backend/logs/scan.log`. The PC must be on
+  (with "start when available", a missed 9:00 runs at the next boot). The backend server
+  doesn't need to be running. Remove it with
+  `schtasks /Delete /TN "Upstox Morning Scan" /F`. Run one anytime with the dashboard's
+  **Scan now** button or by double-clicking `Morning Scan.cmd`.
+- **Read the verdicts with care.** In the first real scan (Nov 2026) the strategy lost money
+  on 173 of 218 stocks (median profit factor 0.74). With 218 stocks tested, a few will show a
+  profitable 2-year backtest by chance alone. Treat "profitable" as "not ruled out" and
+  paper-trade before trusting it.
+- Very high-priced stocks (e.g. PAGEIND at ~₹31,000) often show "too few trades": one share's
+  stop distance exceeds the ₹500 per-trade risk on ₹1 lakh test capital, so every signal is
+  rejected by the risk engine.
+
 ## Options (F&O): paper trading and backtesting
 
 Added after the five original phases. Code: `app/engine/options.py`,
