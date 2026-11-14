@@ -57,6 +57,12 @@
     "debit_note": {
       "enabled": true,
       "item_ledger": "Purchase Return"
+    },
+    "receipt": {
+      "enabled": true
+    },
+    "payment": {
+      "enabled": true
     }
   },
   "gst": {
@@ -95,5 +101,9 @@
   "rounding": {
     "enabled": true,
     "ledger": "R/o"
+  },
+  "money": {
+    "default_account": "",
+    "max_amount": 200000
   }
 }

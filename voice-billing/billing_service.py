@@ -1,7 +1,8 @@
 """Local billing API for Jarvis. Listens on 127.0.0.1 only and needs the shared token in X-Billing-Token.
 
   GET  /health
-  POST /draft    {voucher_type, party, items:[{name, quantity, rate?, gst_percent?}], narration?, date?}
+  POST /draft    {voucher_type, party, items:[{name, quantity, rate?, gst_percent?, godown?, batch?}], narration?, date?}
+                 receipt/payment: {voucher_type, party, amount, account?, narration?, date?}
   POST /confirm  {draft_id}
   POST /cancel   {draft_id}
 
@@ -86,7 +87,13 @@ def make_handler(service: VoucherService, tally: TallyClient, token: str):
                 return self._send(400, {"ok": False, "error_code": "bad_request"})
 
             try:
-                if self.path == "/draft":
+                if self.path == "/draft" and str(data.get("voucher_type", "")) in ("receipt", "payment"):
+                    result = service.draft_money(
+                        str(data.get("voucher_type")), str(data.get("party", "")), data.get("amount"),
+                        account=str(data.get("account") or "") or None, narration=str(data.get("narration", ""))[:200],
+                        voucher_date=data.get("date"), source="jarvis",
+                    )
+                elif self.path == "/draft":
                     items = data.get("items")
                     if not isinstance(items, list) or not all(isinstance(i, dict) for i in items):
                         raise VoucherError("bad_request", "माल यादी समजली नाही.")

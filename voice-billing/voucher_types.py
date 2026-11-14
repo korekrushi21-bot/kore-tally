@@ -31,6 +31,22 @@ class VoucherSpec:
     gst_side: str     # "output" or "input"
     # Cash sales / purchases name the Cash ledger as the party, and Cash is not under Sundry Debtors/Creditors.
     party_extra_groups: tuple = ("Cash-in-Hand",)
+    money: bool = False   # True only for Receipt / Payment (no items, no GST)
+
+
+@dataclass(frozen=True)
+class MoneySpec:
+    """Receipt / Payment: money in or out between a party (or expense ledger) and a Cash / Bank ledger.
+
+      receipt   party Cr | Cash/Bank Dr    (money received from the party)
+      payment   party Dr | Cash/Bank Cr    (money paid to the party)
+    """
+    key: str
+    tally_type: str
+    label_mr: str
+    party_label_mr: str
+    party_is_debit: bool
+    money: bool = True
 
 
 VOUCHER_SPECS = {
@@ -72,8 +88,15 @@ def detect_voucher_type(text: str) -> Optional[str]:
     return None
 
 
-def get_spec(key: str) -> VoucherSpec:
-    try:
+MONEY_SPECS = {
+    "receipt": MoneySpec("receipt", "Receipt", "जमा पावती (Receipt)", "कोणाकडून", False),
+    "payment": MoneySpec("payment", "Payment", "पेमेंट (Payment)", "कोणाला", True),
+}
+
+
+def get_spec(key: str):
+    if key in VOUCHER_SPECS:
         return VOUCHER_SPECS[key]
-    except KeyError:
-        raise ValueError(f"Unsupported voucher type: {key!r}") from None
+    if key in MONEY_SPECS:
+        return MONEY_SPECS[key]
+    raise ValueError(f"Unsupported voucher type: {key!r}")
