@@ -20,14 +20,6 @@
       "port": 4000
     },
     {
-      "name": "kore-ai",
-      "runtimeExecutable": "node",
-      "runtimeArgs": [
-        "my-ai/server.js"
-      ],
-      "port": 3000
-    },
-    {
       "name": "upstox-backend",
       "runtimeExecutable": "upstox-ai-trader/backend/.venv/Scripts/uvicorn.exe",
       "runtimeArgs": [
@@ -51,6 +43,15 @@
         "dev"
       ],
       "port": 5180
+    },
+    {
+      "name": "call-reminder-mock",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "-e",
+        "process.env.USE_MOCK_DATA='1';process.env.PORT='4100';process.env.CALL_DATA_FILE=require('path').join(require('os').tmpdir(),'call-data-test.json');require('./tally-overdue-reminder/backend/config.json').auth.password='preview-test-only';require('./tally-overdue-reminder/backend/server.js')"
+      ],
+      "port": 4100
     }
   ]
 }
