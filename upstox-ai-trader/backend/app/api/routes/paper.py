@@ -79,6 +79,26 @@ async def evaluate(
     return {"exits": exits, "signal_action": sig.action, "entry_result": entry_result}
 
 
+@router.post("/check-exits")
+async def check_exits(db: Session = Depends(get_db), client: UpstoxClient = Depends(get_authenticated_client)):
+    """Exit-only pass over open stock (non-option) paper positions: closes the
+    ones whose live price has crossed their stop-loss or target. Never opens a
+    new position. Option positions are checked by /options/paper/evaluate.
+    """
+    keys = sorted({p.instrument_key for p in paper_trading.get_open_positions(db) if p.option_leg is None})
+    if not keys:
+        return {"checked": 0, "closed": [], "prices": {}}
+    try:
+        prices = _parse_ltp_response(await client.get_ltp(keys))
+    except UpstoxAPIError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    closed = []
+    for key in keys:
+        if key in prices:
+            closed.extend(paper_trading.check_exits(db, key, prices[key]))
+    return {"checked": len(keys), "closed": closed, "prices": prices, "missing_prices": [k for k in keys if k not in prices]}
+
+
 @router.post("/positions/{position_id}/close")
 def close_position(position_id: int, price: float = Body(..., embed=True), db: Session = Depends(get_db)):
     try:

@@ -12,6 +12,18 @@ import { BacktestPanel } from "./components/BacktestPanel";
 import { OptionsPanel } from "./components/OptionsPanel";
 import { MorningScanPanel } from "./components/MorningScanPanel";
 import { LiveTradingPanel } from "./components/LiveTradingPanel";
+import { SimpleView } from "./components/simple/SimpleView";
+
+type Mode = "simple" | "detailed";
+const MODE_KEY = "app.mode";
+
+function loadMode(): Mode {
+  try {
+    return localStorage.getItem(MODE_KEY) === "detailed" ? "detailed" : "simple";
+  } catch {
+    return "simple";
+  }
+}
 
 const POLL_INTERVAL_MS = 15_000;
 
@@ -19,6 +31,16 @@ function App() {
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [account, setAccount] = useState<PaperAccount | null>(null);
   const [trades, setTrades] = useState<PaperPositionDTO[]>([]);
+  const [mode, setModeState] = useState<Mode>(loadMode);
+
+  function setMode(next: Mode) {
+    setModeState(next);
+    try {
+      localStorage.setItem(MODE_KEY, next);
+    } catch {
+      /* per-browser convenience only */
+    }
+  }
 
   const refresh = useCallback(async () => {
     try {
@@ -58,11 +80,28 @@ function App() {
           <img src="/favicon.svg" alt="" width={36} height={36} />
           <div>
             <h1>Upstox AI Smart Trader</h1>
-            <div className="subtitle">Paper trading by default. Live trading exists but is off unless explicitly enabled.</div>
+            <div className="subtitle">
+              {mode === "simple"
+                ? "सोपा मोड: सराव (खोटे पैसे), मराठीत, नवशिक्यांसाठी."
+                : "Paper trading by default. Live trading exists but is off unless explicitly enabled."}
+            </div>
           </div>
+        </div>
+        <div className="mode-switch" role="group" aria-label="View mode">
+          <button className={mode === "simple" ? "active" : ""} onClick={() => setMode("simple")}>
+            सोपा मोड
+          </button>
+          <button className={mode === "detailed" ? "active" : ""} onClick={() => setMode("detailed")}>
+            सविस्तर मोड
+          </button>
         </div>
         <StatusBar status={authStatus} onDisconnect={disconnect} />
       </div>
+
+      {mode === "simple" ? (
+        <SimpleView authStatus={authStatus} account={account} trades={trades} onRefresh={refresh} />
+      ) : (
+      <>
 
       <div className="card">
         <h2>Morning scan: today's signals across F&amp;O stocks</h2>
@@ -112,6 +151,8 @@ function App() {
         <h2>⚠ Live Trading — real money, real orders</h2>
         <LiveTradingPanel connected={connected} />
       </div>
+      </>
+      )}
     </>
   );
 }

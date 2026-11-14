@@ -86,6 +86,10 @@ export const api = {
       `/paper/evaluate?instrument_key=${encodeURIComponent(instrumentKey)}&unit=${unit}&interval=${interval}`,
       { method: "POST" }
     ),
+  paperCheckExits: () =>
+    request<{ checked: number; closed: PaperPositionDTO[]; missing_prices?: string[] }>("/paper/check-exits", {
+      method: "POST",
+    }),
   paperClosePosition: (id: number, price: number) =>
     request<PaperPositionDTO>(`/paper/positions/${id}/close`, {
       method: "POST",

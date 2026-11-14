@@ -120,3 +120,37 @@ def test_trades_endpoint_lists_closed_positions(client):
     assert len(trades) == 1
     assert trades[0]["status"] == "CLOSED"
     assert trades[0]["exit_reason"] == "emergency_stop"
+
+
+def test_check_exits_closes_only_positions_past_their_levels(client):
+    _connect(client)
+    with respx.mock:
+        respx.get(url__startswith="https://api.upstox.com/v3/historical-candle/").mock(
+            return_value=Response(200, json={"status": "success", "data": {"candles": _raw_uptrend_candles()}})
+        )
+        respx.get("https://api.upstox.com/v3/market-quote/ltp").mock(
+            return_value=Response(200, json=_ltp_response("NSE_EQ|TEST", 155.2))
+        )
+        client.post("/paper/evaluate", params={"instrument_key": "NSE_EQ|TEST"})
+    position = client.get("/paper/positions").json()[0]
+
+    with respx.mock:  # price between stop and target: nothing closes, nothing opens
+        respx.get("https://api.upstox.com/v3/market-quote/ltp").mock(
+            return_value=Response(200, json=_ltp_response("NSE_EQ|TEST", position["entry_price"]))
+        )
+        body = client.post("/paper/check-exits").json()
+    assert body["checked"] == 1 and body["closed"] == []
+    assert len(client.get("/paper/positions").json()) == 1
+
+    with respx.mock:  # price through the target: closes
+        respx.get("https://api.upstox.com/v3/market-quote/ltp").mock(
+            return_value=Response(200, json=_ltp_response("NSE_EQ|TEST", position["target"] + 1))
+        )
+        body = client.post("/paper/check-exits").json()
+    assert [c["exit_reason"] for c in body["closed"]] == ["target"]
+    assert client.get("/paper/positions").json() == []
+
+
+def test_check_exits_with_nothing_open(client):
+    _connect(client)
+    assert client.post("/paper/check-exits").json() == {"checked": 0, "closed": [], "prices": {}}
