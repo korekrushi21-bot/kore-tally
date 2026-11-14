@@ -278,9 +278,73 @@ export interface ScanResultDTO {
     verdict: BacktestVerdict;
   };
   error: string | null;
+  option_plan: OptionPlanDTO | null;
+}
+
+export interface OptionPlanDTO {
+  status: "ok" | "too_big" | "no_contract";
+  reason: string;
+  contract: {
+    instrument_key: string;
+    trading_symbol: string;
+    option_type: "CE" | "PE";
+    strike: number;
+    expiry: string;
+    lot_size: number;
+  } | null;
+  premium: number | null;
+  premium_date: string | null;
+  delta: number | null;
+  lots: number;
+  quantity: number;
+  premium_outlay: number;
+  max_loss: number;
+  one_lot_risk: number;
+  risk_budget: number;
+  capital_needed_for_one_lot?: number;
+  breakeven: number | null;
+  days_to_expiry: number | null;
+  exit_by: string | null;
+  entry?: { limit_premium: number; reference_premium: number; stock_low: number; stock_high: number } | null;
+  exit?: {
+    stop_stock: number;
+    stop_premium_est: number;
+    stop_pnl_per_lot_est: number;
+    target_stock: number;
+    target_premium_est: number;
+    target_pnl_per_lot_est: number;
+    exit_by: string;
+    estimate_method: string;
+  } | null;
+  rules: string[];
+  candidates: { trading_symbol: string; strike: number; premium?: number; delta?: number | null; skipped?: string }[];
 }
 
 export interface ScanLatest {
   run: ScanRunDTO | null;
   results: ScanResultDTO[];
+}
+
+export interface SmartlistTag {
+  category: string;
+  label: string;
+  rank: number;
+  price_change_pct: number | null;
+  metric_key: string | null;
+  metric_change_pct: number | null;
+  reading: string | null;
+}
+
+export interface NewsItem {
+  heading: string;
+  summary: string;
+  link: string | null;
+  published_at: string | null;
+}
+
+export interface ScanContext {
+  run_id: number | null;
+  stocks: Record<string, { smartlists: SmartlistTag[]; news: NewsItem[] }>;
+  smartlist_timestamp: string | null;
+  errors: string[];
 }

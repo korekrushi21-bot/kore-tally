@@ -23,10 +23,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import UpstoxAPIError
-from app.db.models import ScanResult, ScanRun
+from app.db.models import ScanOptionPlan, ScanResult, ScanRun
+from app.engine import option_picker
 from app.engine.backtest import run_backtest
 from app.engine.candle import Candle, candles_from_upstox
-from app.engine.strategy import MIN_CANDLES, generate_signal
+from app.engine.options import OptionContract
+from app.engine.strategy import MIN_CANDLES, Signal, generate_signal
 
 SIGNAL_WINDOW_DAYS = 150
 VERDICT_RANK = {"supports": 0, "mixed": 1, "too_few": 2, "against": 3, "": 4}
@@ -40,6 +42,10 @@ class ScanConfig:
     min_seconds_between_requests: float = 0.25
     min_trades_for_verdict: int = 5
     supports_profit_factor: float = 1.3
+    option_rate: float = 0.065
+    # Risk engine for option sizing uses the app's own risk settings; this is the
+    # capital those percentages apply to.
+    option_capital: float | None = None
 
 
 @dataclass
@@ -52,6 +58,9 @@ class StockOutcome:
     backtest: dict = field(default_factory=dict)
     verdict: str = ""
     error: str | None = None
+    signal_obj: Signal | None = None
+    avg_holding_days: float | None = None
+    option_plan: dict | None = None
 
 
 def backtest_verdict(metrics: dict, config: ScanConfig) -> str:
@@ -80,6 +89,8 @@ def analyse_stock(candles: list[Candle], instrument_key: str, config: ScanConfig
 
     result = run_backtest(candles, instrument_key, config.starting_capital)
     metrics = result.metrics["all"]
+    held = [(t.exit_date - t.entry_date).days for t in result.trades]
+    avg_holding_days = sum(held) / len(held) if held else None
 
     return StockOutcome(
         action=sig.action,
@@ -95,6 +106,8 @@ def analyse_stock(candles: list[Candle], instrument_key: str, config: ScanConfig
         },
         backtest=metrics,
         verdict=backtest_verdict(metrics, config),
+        signal_obj=sig,
+        avg_holding_days=avg_holding_days,
     )
 
 
@@ -129,6 +142,68 @@ async def _fetch_candles(client, instrument_key: str, to_day: date, from_day: da
     return []
 
 
+async def _option_plan(
+    client, outcome: StockOutcome, contracts: list[OptionContract], today: date, config: ScanConfig, throttle
+) -> dict:
+    """Prices the candidate strikes from their daily candles (public data, no
+    login) and asks option_picker for one concrete trade. Tries the first two
+    eligible expiries in case nothing traded in the nearer one.
+    """
+    sig = outcome.signal_obj
+    picker_config = option_picker.PickerConfig(
+        capital=config.option_capital or config.starting_capital, rate=config.option_rate
+    )
+    option_type = "CE" if sig.action == "BUY" else "PE"
+    days_needed = option_picker.min_days_needed(outcome.avg_holding_days, picker_config)
+    expiries = sorted({c.expiry for c in contracts if c.option_type == option_type and (c.expiry - today).days >= days_needed})
+    plan = None
+    for expiry in expiries[:2]:
+        of_expiry = [c for c in contracts if c.expiry == expiry]
+        candles: dict[str, list[Candle]] = {}
+        for contract in option_picker.candidate_strikes(of_expiry, option_type, expiry, outcome.last_close):
+            try:
+                candles[contract.instrument_key] = await _fetch_candles(
+                    client, contract.instrument_key, today, outcome.data_date - timedelta(days=10), throttle
+                )
+            except UpstoxAPIError:
+                candles[contract.instrument_key] = []
+        plan = option_picker.plan_option_trade(
+            sig, outcome.last_close, outcome.data_date, of_expiry, candles, outcome.avg_holding_days, today, picker_config
+        )
+        if plan.status != "no_contract":
+            break
+    if plan is None:
+        plan = option_picker.plan_option_trade(
+            sig, outcome.last_close, outcome.data_date, [], {}, outcome.avg_holding_days, today, picker_config
+        )
+    return plan_to_dict(plan)
+
+
+def plan_to_dict(plan) -> dict:
+    return {
+        "status": plan.status,
+        "reason": plan.reason,
+        "contract": plan.contract,
+        "premium": plan.premium,
+        "premium_date": plan.premium_date.isoformat() if plan.premium_date else None,
+        "delta": plan.delta,
+        "lots": plan.lots,
+        "quantity": plan.quantity,
+        "premium_outlay": plan.premium_outlay,
+        "max_loss": plan.max_loss,
+        "one_lot_risk": plan.one_lot_risk,
+        "risk_budget": plan.risk_budget,
+        "capital_needed_for_one_lot": plan.capital_needed_for_one_lot,
+        "breakeven": plan.breakeven,
+        "days_to_expiry": plan.days_to_expiry,
+        "exit_by": plan.exit_by.isoformat() if plan.exit_by else None,
+        "entry": plan.entry,
+        "exit": plan.exit,
+        "rules": plan.rules,
+        "candidates": plan.candidates,
+    }
+
+
 async def run_scan(
     db: Session,
     client,
@@ -137,6 +212,7 @@ async def run_scan(
     trigger: str = "manual",
     config: ScanConfig | None = None,
     run: ScanRun | None = None,
+    options_by_underlying: dict[str, list[OptionContract]] | None = None,
 ) -> ScanRun:
     config = config or ScanConfig()
     if run is None:
@@ -153,7 +229,14 @@ async def run_scan(
         async with semaphore:
             try:
                 candles = await _fetch_candles(client, stock["instrument_key"], today, from_day, throttle)
-                return stock, analyse_stock(candles, stock["instrument_key"], config)
+                outcome = analyse_stock(candles, stock["instrument_key"], config)
+                contracts = (options_by_underlying or {}).get(stock["instrument_key"])
+                if outcome.action in ("BUY", "SELL") and contracts:
+                    try:
+                        outcome.option_plan = await _option_plan(client, outcome, contracts, today, config, throttle)
+                    except Exception as exc:  # a pricing failure must not lose the stock signal
+                        outcome.option_plan = {"status": "no_contract", "reason": f"{type(exc).__name__}: {exc}"[:200]}
+                return stock, outcome
             except UpstoxAPIError as exc:
                 return stock, StockOutcome(action="ERROR", error=f"Upstox {exc.status_code}: {exc.message}"[:256])
             except Exception as exc:  # one bad stock must not kill the whole scan
@@ -163,7 +246,11 @@ async def run_scan(
         outcomes = await asyncio.gather(*(scan_one(s) for s in universe))
         data_dates = []
         for stock, outcome in outcomes:
-            db.add(_result_row(run.id, stock, outcome))
+            row = _result_row(run.id, stock, outcome)
+            db.add(row)
+            if outcome.option_plan is not None:
+                db.flush()
+                db.add(ScanOptionPlan(result_id=row.id, plan=outcome.option_plan))
             if outcome.action == "ERROR":
                 run.error_count += 1
             else:
@@ -210,6 +297,15 @@ def _result_row(run_id: int, stock: dict, outcome: StockOutcome) -> ScanResult:
 
 def latest_run(db: Session) -> ScanRun | None:
     return db.scalar(select(ScanRun).order_by(ScanRun.id.desc()).limit(1))
+
+
+def option_plans(db: Session, run_id: int) -> dict[int, dict]:
+    rows = db.execute(
+        select(ScanOptionPlan.result_id, ScanOptionPlan.plan)
+        .join(ScanResult, ScanResult.id == ScanOptionPlan.result_id)
+        .where(ScanResult.run_id == run_id)
+    )
+    return {result_id: plan for result_id, plan in rows}
 
 
 def ranked_results(db: Session, run_id: int) -> list[ScanResult]:

@@ -92,6 +92,20 @@ class UpstoxClient:
             params["expiry_date"] = expiry_date
         return await self._get("/v2/option/contract", params=params)
 
+    async def get_futures_smartlist(self, asset_type: str, category: str, page_size: int = 50, page_number: int = 1) -> dict:
+        """GET /v2/market/smartlist/futures (needs login; checked against a live
+        response Nov 2026: data.smartlist = [{instrument_key "NSE_FO|..",
+        price{current, close_price, change_pct}, metric{current, previous, change_pct}}])."""
+        params = {"asset_type": asset_type, "category": category, "page_number": page_number, "page_size": page_size}
+        return await self._get("/v2/market/smartlist/futures", params=params)
+
+    async def get_news(self, instrument_keys: list[str], page_size: int = 100) -> dict:
+        """GET /v2/news, max 30 instrument keys per call (needs login). Response
+        data is keyed by instrument key -> [{heading, summary, article_link,
+        published_time (epoch ms)}]."""
+        params = {"category": "instrument_keys", "instrument_keys": ",".join(instrument_keys), "page_size": page_size}
+        return await self._get("/v2/news", params=params)
+
     async def get_historical_candles(
         self, instrument_key: str, unit: str, interval: int, to_date: str, from_date: str | None = None
     ) -> dict:

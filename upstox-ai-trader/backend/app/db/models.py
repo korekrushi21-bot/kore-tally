@@ -243,3 +243,14 @@ class ScanResult(Base):
     bt_max_drawdown_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     bt_verdict: Mapped[str] = mapped_column(String(16), default="")  # supports | mixed | against | too_few
     error: Mapped[str | None] = mapped_column(String(256), nullable=True)
+
+
+class ScanOptionPlan(Base):
+    """The concrete option trade suggested for one scan result (a separate
+    table so scan_results needs no migration)."""
+
+    __tablename__ = "scan_option_plans"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    result_id: Mapped[int] = mapped_column(ForeignKey("scan_results.id"), unique=True, index=True)
+    plan: Mapped[dict] = mapped_column(JSON)

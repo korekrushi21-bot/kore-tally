@@ -66,7 +66,7 @@ function App() {
 
       <div className="card">
         <h2>Morning scan: today's signals across F&amp;O stocks</h2>
-        <MorningScanPanel />
+        <MorningScanPanel connected={connected} />
       </div>
 
       <div className="card">

@@ -172,10 +172,12 @@ def test_scan_route_runs_in_background_without_login(client, db_session, monkeyp
     from app.api.routes import scan as scan_route
     from app.db import base as db_base
 
-    async def fake_universe(today, force_refresh=False):
-        return _universe("NSE_EQ|A")
+    from app.services.instruments import FnoData
 
-    monkeypatch.setattr(scan_route, "load_fno_universe", fake_universe)
+    async def fake_fno(today, force_refresh=False):
+        return FnoData(universe=_universe("NSE_EQ|A"), options={})
+
+    monkeypatch.setattr(scan_route, "load_fno_data", fake_fno)
     monkeypatch.setattr(db_base, "SessionLocal", lambda: _NonClosingSession(db_session))
     fake = FakeCandleClient({"NSE_EQ|A": _uptrend_rows()})
     monkeypatch.setattr(scan_route, "scan_client", lambda db: fake)

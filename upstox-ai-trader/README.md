@@ -317,6 +317,22 @@ Code: `app/engine/scanner.py`, `app/services/instruments.py`, `app/api/routes/sc
   on 173 of 218 stocks (median profit factor 0.74). With 218 stocks tested, a few will show a
   profitable 2-year backtest by chance alone. Treat "profitable" as "not ruled out" and
   paper-trade before trusting it.
+- **Option trade per signal** (`app/engine/option_picker.py`): for each BUY/SELL the scan
+  picks one contract and states every rule. A BUY gets a CALL and a SELL gets a PUT. The expiry
+  must be at least 1.5× the stock's average backtest holding period + 3 days away. The strike
+  is ATM / 1 ITM / 2 ITM, whichever has delta closest to 0.65 and traded on the signal day.
+  Lots come from the risk engine. The plan gives an entry LIMIT (previous close premium + 5%,
+  only while the stock is between its stop and 25% of the way to target). It also gives exits
+  on the stock's stop/target with Black-Scholes premium estimates at the option's implied
+  volatility, and a time exit 2 days before expiry. Option prices come from public daily
+  candles (previous close), not live quotes. On ₹1 lakh at 1% risk, no stock option lot fits
+  (the smallest one-lot risk was ~₹19,500). The plan then says "0 lots" and shows the capital
+  one lot would need.
+- **Upstox context** (`app/engine/market_context.py`, `GET /scan/context`, needs the daily
+  login): for each BUY/SELL stock, its rank in Upstox's stock-futures Smartlists (OI
+  gainers/losers, price gainers/losers, most active, top traded; best rank per list) with the
+  standard buildup reading, plus its 3 latest Upstox news headlines. Upstox has **no API for
+  its in-app research/advisory ideas**, so those are not shown, and this app does not scrape them.
 - Very high-priced stocks (e.g. PAGEIND at ~₹31,000) often show "too few trades": one share's
   stop distance exceeds the ₹500 per-trade risk on ₹1 lakh test capital, so every signal is
   rejected by the risk engine.

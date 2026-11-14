@@ -12,6 +12,7 @@ import type {
   OptionSignalPreview,
   PaperAccount,
   PaperPositionDTO,
+  ScanContext,
   ScanLatest,
   ScanRunDTO,
   Signal,
@@ -149,6 +150,7 @@ export const api = {
   },
 
   scanLatest: () => request<ScanLatest>("/scan/latest"),
+  scanContext: () => request<ScanContext>("/scan/context"),
   scanRun: () => request<ScanRunDTO>("/scan/run", { method: "POST" }),
 
   liveStatus: () => request<LiveStatus>("/live/status"),

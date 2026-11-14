@@ -2,6 +2,7 @@
 candle requests, about a minute); the dashboard polls /scan/latest.
 """
 import asyncio
+import time
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
@@ -12,9 +13,11 @@ from app.core.time_utils import today_ist
 from app.db import base as db_base
 from app.db.base import get_db
 from app.db.models import ScanRun
-from app.engine import scanner
+from app.api.deps import get_authenticated_client
+from app.engine import market_context, scanner
 from app.services.auth_service import get_active_session, get_decrypted_token
-from app.services.instruments import load_fno_universe
+from app.core.config import get_settings
+from app.services.instruments import load_fno_data
 from app.services.upstox_client import UpstoxClient
 
 router = APIRouter(prefix="/scan", tags=["scan"])
@@ -37,14 +40,20 @@ async def execute_scan(run_id: int, trigger: str, limit: int | None = None) -> N
     try:
         run = db.get(ScanRun, run_id)
         try:
-            universe = await load_fno_universe(today_ist())
+            fno = await load_fno_data(today_ist())
         except Exception as exc:
             run.status, run.message = "FAILED", f"Could not load the F&O stock list: {exc}"[:512]
             db.commit()
             return
-        if limit:
-            universe = universe[:limit]
-        await scanner.run_scan(db, scan_client(db), universe, today_ist(), trigger=trigger, run=run)
+        universe = fno.universe[:limit] if limit else fno.universe
+        settings = get_settings()
+        config = scanner.ScanConfig()
+        config.option_capital = settings.paper_trading_starting_capital
+        config.option_rate = settings.option_risk_free_rate
+        await scanner.run_scan(
+            db, scan_client(db), universe, today_ist(), trigger=trigger, run=run,
+            config=config, options_by_underlying=fno.options,
+        )
     finally:
         db.close()
 
@@ -71,7 +80,36 @@ def latest(db: Session = Depends(get_db)):
     run = scanner.latest_run(db)
     if run is None:
         return {"run": None, "results": []}
-    return {"run": run_dict(run), "results": [result_dict(r) for r in scanner.ranked_results(db, run.id)]}
+    plans = scanner.option_plans(db, run.id)
+    return {
+        "run": run_dict(run),
+        "results": [result_dict(r, plans.get(r.id)) for r in scanner.ranked_results(db, run.id)],
+    }
+
+
+_context_cache: dict = {}
+_CONTEXT_TTL_SECONDS = 600
+
+
+@router.get("/context")
+async def context(db: Session = Depends(get_db), client: UpstoxClient = Depends(get_authenticated_client)):
+    """Upstox Smartlist ranks + latest news for the latest scan's BUY/SELL
+    stocks. Needs the daily login (both Upstox APIs require it). Cached for
+    10 minutes per scan run to stay well inside Upstox's rate limits.
+    """
+    run = scanner.latest_run(db)
+    if run is None or run.status != "DONE":
+        return {"run_id": None, "stocks": {}, "smartlist_timestamp": None, "errors": []}
+    cached = _context_cache.get(run.id)
+    if cached and time.monotonic() - cached[0] < _CONTEXT_TTL_SECONDS:
+        return cached[1]
+
+    keys = [r.instrument_key for r in scanner.ranked_results(db, run.id) if r.action in ("BUY", "SELL")]
+    fno = await load_fno_data(today_ist())
+    result = {"run_id": run.id, **await market_context.fetch_context(client, keys, fno.future_to_underlying or {})}
+    _context_cache.clear()
+    _context_cache[run.id] = (time.monotonic(), result)
+    return result
 
 
 @router.get("/runs")
@@ -95,7 +133,7 @@ def run_dict(run: ScanRun) -> dict:
     }
 
 
-def result_dict(r) -> dict:
+def result_dict(r, option_plan: dict | None = None) -> dict:
     return {
         "instrument_key": r.instrument_key,
         "symbol": r.symbol,
@@ -118,4 +156,5 @@ def result_dict(r) -> dict:
             "verdict": r.bt_verdict,
         },
         "error": r.error,
+        "option_plan": option_plan,
     }
