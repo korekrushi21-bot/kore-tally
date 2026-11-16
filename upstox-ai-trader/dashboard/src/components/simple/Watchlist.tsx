@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ScanLatest, ScanResultDTO } from "../../types";
 import { api } from "../../api";
 import { fromServerTime, marathiDate, marathiDateTime, pctChange, rupees } from "./translate";
+import { AdvisoryCards } from "./AdvisoryCards";
 
 // The user's list rules. "Win rate" is how often the strategy's past trades on
 // this share ended in profit, not a forecast for the next trade.
@@ -63,6 +64,8 @@ export function Watchlist({ connected, riskBudget }: { connected: boolean; riskB
   const buys = list.filter((r) => r.action === "BUY").length;
 
   return (
+    <>
+    <AdvisoryCards scan={scan} connected={connected} />
     <div className="wl">
       <div className="wl-head">
         <div>
@@ -181,5 +184,6 @@ export function Watchlist({ connected, riskBudget }: { connected: boolean; riskB
         वर trade करायचा निर्णय आणि जबाबदारी तुमची.
       </p>
     </div>
+    </>
   );
 }
