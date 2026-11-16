@@ -320,6 +320,10 @@ def latest_run(db: Session) -> ScanRun | None:
     return db.scalar(select(ScanRun).order_by(ScanRun.id.desc()).limit(1))
 
 
+def latest_done_run(db: Session) -> ScanRun | None:
+    return db.scalar(select(ScanRun).where(ScanRun.status == "DONE").order_by(ScanRun.id.desc()).limit(1))
+
+
 def option_plans(db: Session, run_id: int) -> dict[int, dict]:
     rows = db.execute(
         select(ScanOptionPlan.result_id, ScanOptionPlan.plan)

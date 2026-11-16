@@ -153,6 +153,10 @@ export const api = {
     return request<OptionBacktestResult>(`/options/backtest?${qs.toString()}`);
   },
 
+  marketLtp: (keys: string[]) =>
+    request<{ prices: Record<string, number> }>(
+      `/market/ltp?instrument_keys=${encodeURIComponent(keys.join(","))}`
+    ),
   scanLatest: () => request<ScanLatest>("/scan/latest"),
   scanContext: () => request<ScanContext>("/scan/context"),
   scanRun: () => request<ScanRunDTO>("/scan/run", { method: "POST" }),

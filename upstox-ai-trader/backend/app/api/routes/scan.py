@@ -79,13 +79,26 @@ async def start_scan(background: BackgroundTasks, limit: int | None = None, db: 
 
 @router.get("/latest")
 def latest(db: Session = Depends(get_db)):
-    run = scanner.latest_run(db)
-    if run is None:
-        return {"run": None, "results": []}
-    plans = scanner.option_plans(db, run.id)
+    """Results of the newest FINISHED scan, so a scan that is running (or was
+    killed) never blanks the list. `in_progress` / `latest_attempt` describe a
+    newer run that hasn't finished or failed. Stuck runs are cleared here too,
+    so a killed scan doesn't show "running" until someone clicks Scan now.
+    """
+    if not _scan_lock.locked():
+        scanner.clear_stale_runs(db)
+    newest = scanner.latest_run(db)
+    if newest is None:
+        return {"run": None, "in_progress": None, "latest_attempt": None, "results": []}
+    shown = scanner.latest_done_run(db) or newest
+    newer = newest if newest.id != shown.id else None
+    plans = scanner.option_plans(db, shown.id)
     return {
-        "run": run_dict(run),
-        "results": [result_dict(r, plans.get(r.id)) for r in scanner.ranked_results(db, run.id)],
+        "run": run_dict(shown),
+        "in_progress": run_dict(newer) if newer is not None and newer.status == "RUNNING" else None,
+        "latest_attempt": run_dict(newer) if newer is not None else None,
+        "results": [result_dict(r, plans.get(r.id)) for r in scanner.ranked_results(db, shown.id)]
+        if shown.status == "DONE"
+        else [],
     }
 
 
@@ -99,8 +112,8 @@ async def context(db: Session = Depends(get_db), client: UpstoxClient = Depends(
     stocks. Needs the daily login (both Upstox APIs require it). Cached for
     10 minutes per scan run to stay well inside Upstox's rate limits.
     """
-    run = scanner.latest_run(db)
-    if run is None or run.status != "DONE":
+    run = scanner.latest_done_run(db)
+    if run is None:
         return {"run_id": None, "stocks": {}, "smartlist_timestamp": None, "errors": []}
     cached = _context_cache.get(run.id)
     if cached and time.monotonic() - cached[0] < _CONTEXT_TTL_SECONDS:

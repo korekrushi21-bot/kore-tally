@@ -165,7 +165,7 @@ def test_ranking_puts_backtest_supported_signals_first(db_session):
 # --- routes ---------------------------------------------------------------------------------
 
 def test_latest_with_no_scans(client):
-    assert client.get("/scan/latest").json() == {"run": None, "results": []}
+    assert client.get("/scan/latest").json() == {"run": None, "in_progress": None, "latest_attempt": None, "results": []}
 
 
 def test_scan_route_runs_in_background_without_login(client, db_session, monkeypatch):
@@ -247,3 +247,35 @@ def test_scan_now_is_not_blocked_by_a_stuck_run(client, db_session):
     finally:
         mp.undo()
     assert response.status_code == 200, response.text
+
+
+
+def test_latest_keeps_showing_finished_results_while_a_new_scan_runs(client, db_session):
+    from datetime import datetime, timezone
+
+    from app.db.models import ScanResult
+
+    done = ScanRun(status="DONE")
+    db_session.add(done)
+    db_session.commit()
+    db_session.add(ScanResult(run_id=done.id, instrument_key="NSE_EQ|A", symbol="A", action="BUY", bt_verdict="supports"))
+    db_session.add(ScanRun(status="RUNNING", started_at=datetime.now(timezone.utc).replace(tzinfo=None)))
+    db_session.commit()
+
+    body = client.get("/scan/latest").json()
+    assert body["run"]["id"] == done.id and body["run"]["status"] == "DONE"
+    assert [r["symbol"] for r in body["results"]] == ["A"]
+    assert body["in_progress"]["status"] == "RUNNING"
+
+
+def test_latest_clears_a_killed_scan_on_load(client, db_session):
+    from datetime import datetime, timedelta, timezone
+
+    stuck = ScanRun(status="RUNNING", started_at=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1))
+    db_session.add(stuck)
+    db_session.commit()
+
+    body = client.get("/scan/latest").json()
+    assert body["in_progress"] is None
+    assert body["run"]["status"] == "FAILED"  # no finished scan exists, so the failed one is shown
+    assert "Interrupted" in body["run"]["message"]

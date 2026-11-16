@@ -13,15 +13,17 @@ import { OptionsPanel } from "./components/OptionsPanel";
 import { MorningScanPanel } from "./components/MorningScanPanel";
 import { LiveTradingPanel } from "./components/LiveTradingPanel";
 import { SimpleView } from "./components/simple/SimpleView";
+import { Watchlist } from "./components/simple/Watchlist";
 
-type Mode = "simple" | "detailed";
+type Mode = "watchlist" | "simple" | "detailed";
 const MODE_KEY = "app.mode";
 
 function loadMode(): Mode {
   try {
-    return localStorage.getItem(MODE_KEY) === "detailed" ? "detailed" : "simple";
+    const saved = localStorage.getItem(MODE_KEY);
+    return saved === "detailed" || saved === "simple" || saved === "watchlist" ? saved : "watchlist";
   } catch {
-    return "simple";
+    return "watchlist";
   }
 }
 
@@ -81,13 +83,16 @@ function App() {
           <div>
             <h1>Upstox AI Smart Trader</h1>
             <div className="subtitle">
-              {mode === "simple"
+              {mode !== "detailed"
                 ? "सोपा मोड: सराव (खोटे पैसे), मराठीत, नवशिक्यांसाठी."
                 : "Paper trading by default. Live trading exists but is off unless explicitly enabled."}
             </div>
           </div>
         </div>
         <div className="mode-switch" role="group" aria-label="View mode">
+          <button className={mode === "watchlist" ? "active" : ""} onClick={() => setMode("watchlist")}>
+            📋 यादी
+          </button>
           <button className={mode === "simple" ? "active" : ""} onClick={() => setMode("simple")}>
             सोपा मोड
           </button>
@@ -98,7 +103,12 @@ function App() {
         <StatusBar status={authStatus} onDisconnect={disconnect} />
       </div>
 
-      {mode === "simple" ? (
+      {mode === "watchlist" ? (
+        <Watchlist
+          connected={connected}
+          riskBudget={(account?.starting_capital ?? 100_000) * (account?.risk_per_trade_pct ?? 0.01)}
+        />
+      ) : mode === "simple" ? (
         <SimpleView authStatus={authStatus} account={account} trades={trades} onRefresh={refresh} />
       ) : (
       <>
