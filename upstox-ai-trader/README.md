@@ -290,6 +290,31 @@ dashboard/
 docker-compose.yml   Postgres + backend
 ```
 
+## Simple mode (for beginners, in Marathi)
+
+The dashboard opens in **सोपा मोड** (simple mode). The header switch goes to **सविस्तर मोड**,
+the full detailed dashboard, and the choice is remembered per browser. Code:
+`dashboard/src/components/simple/`.
+
+- **4-step checklist:** connect Upstox, today's scan, practise one idea, check results.
+  Each step shows whether it's done.
+- **Safety box:** everything is paper trading, the per-trade rupee risk, the max open
+  trades, and "signals, not advice".
+- **Today's ideas:** up to 5 cards that meet your conditions (the same ₹ price and win-rate
+  filters as the detailed scan panel; click a chip to turn it on or off).
+  - Each card shows a traffic light for the stock's 2-year backtest, plus entry, stop-loss
+    and target with % moves.
+  - "With ₹X risk: N shares", with the rupee loss at stop and gain at target.
+  - A one-click **practice (paper) trade** and "why this signal?" in plain Marathi.
+  - SELL ideas carry a warning that shorting is hard for beginners.
+  - When nothing qualifies, the view says so and suggests nothing.
+- **My practice trades:** open trades with a stop→target progress bar, and closed trades,
+  wins and net P&L. "आत्ता तपासा" calls `POST /paper/check-exits`, which only closes trades
+  past their stop or target and never opens one.
+- **Glossary:** stock, BUY/SELL signal, stop-loss, target, risk, paper trading, backtest,
+  win rate, profit factor, options/lot, market vs limit order, each with an example.
+- Options and live trading are not shown in simple mode.
+
 ## Morning scan (F&O stocks)
 
 Code: `app/engine/scanner.py`, `app/services/instruments.py`, `app/api/routes/scan.py`,

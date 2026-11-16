@@ -354,6 +354,8 @@ def get_account_snapshot(db: Session, mark_prices: dict[str, float] | None = Non
         else 0.0,
         "trading_halted": account.trading_halted,
         "daily_loss_limit_halted": today.loss_limit_halted,
+        "risk_per_trade_pct": settings.risk_max_per_trade_pct,
+        "max_open_positions": settings.risk_max_open_positions,
         "open_positions": position_dicts,
     }
 

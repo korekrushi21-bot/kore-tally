@@ -286,3 +286,199 @@ th {
   font-size: 0.85rem;
   margin-bottom: 10px;
 }
+
+/* ---- Simple (beginner) view ---- */
+.mode-switch {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.mode-switch button {
+  border: 0;
+  border-radius: 0;
+  padding: 6px 14px;
+}
+.mode-switch button.active {
+  background: var(--accent);
+  color: white;
+}
+a.button {
+  display: inline-block;
+  text-decoration: none;
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: 8px;
+  color: var(--text);
+}
+a.button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+.simple {
+  font-size: 16px;
+  line-height: 1.55;
+}
+.simple-steps {
+  margin: 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 8px;
+}
+.simple-steps li.done strong {
+  color: var(--green);
+}
+.simple-safety {
+  background: var(--green-bg);
+}
+.simple-safety ul {
+  margin: 0;
+  padding-left: 20px;
+}
+.chip {
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 14px;
+}
+.chip-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+.simple-empty {
+  background: var(--amber-bg);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+}
+.simple-empty p {
+  margin: 4px 0;
+}
+.simple-ideas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+.simple-idea {
+  border: 1px solid var(--border);
+  border-left-width: 6px;
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  background: var(--surface);
+}
+.simple-idea.green {
+  border-left-color: var(--green);
+}
+.simple-idea.amber {
+  border-left-color: var(--amber);
+}
+.simple-idea.red {
+  border-left-color: var(--red);
+}
+.simple-idea-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.simple-symbol {
+  font-size: 20px;
+  font-weight: 700;
+}
+.simple-light {
+  margin: 8px 0;
+}
+.simple-warn {
+  background: var(--amber-bg);
+  color: var(--amber);
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.simple-levels {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 8px 0;
+}
+.simple-levels .label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.simple-levels .value {
+  font-weight: 600;
+}
+.simple-math {
+  font-size: 14px;
+  background: var(--bg);
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+.simple-ok,
+.simple-no {
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin-top: 8px;
+}
+.simple-ok {
+  background: var(--green-bg);
+}
+.simple-no {
+  background: var(--amber-bg);
+}
+.simple-ok p,
+.simple-no p {
+  margin: 2px 0;
+}
+.simple-positions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+.simple-pos {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+.simple-bar {
+  height: 8px;
+  background: linear-gradient(90deg, var(--red-bg), var(--green-bg));
+  border-radius: 999px;
+  margin-top: 8px;
+  position: relative;
+}
+.simple-bar > div {
+  height: 100%;
+  border-right: 3px solid var(--text);
+  border-radius: 999px;
+}
+.simple-bar-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+.simple-glossary details {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 0;
+}
+.simple-glossary summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.simple-glossary p {
+  margin: 6px 0 0;
+}
+@media (max-width: 560px) {
+  .simple-levels {
+    grid-template-columns: 1fr;
+  }
+}
+
+.buy-today-date {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 6px 10px;
+  display: inline-block;
+  margin-top: 0;
+}

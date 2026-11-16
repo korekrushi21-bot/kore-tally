@@ -32,6 +32,8 @@ export interface PaperAccount {
   daily_risk_utilization_pct: number;
   trading_halted: boolean;
   daily_loss_limit_halted: boolean;
+  risk_per_trade_pct?: number;
+  max_open_positions?: number;
   open_positions: PaperPositionDTO[];
 }
 
