@@ -482,3 +482,129 @@ a.button.primary {
   display: inline-block;
   margin-top: 0;
 }
+
+/* ---- Watchlist (broker-app style list) ---- */
+.wl {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.wl-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px 6px;
+}
+.wl-head h2 {
+  margin: 0;
+}
+.wl-rules {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.wl-count {
+  text-align: right;
+  font-size: 14px;
+}
+.wl-count strong {
+  font-size: 22px;
+}
+.wl-meta {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 0 16px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.wl-note {
+  background: var(--amber-bg);
+  font-size: 14px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.wl-row {
+  border-bottom: 1px solid var(--border);
+}
+.wl-row.wl-buy {
+  background: var(--green-bg);
+}
+.wl-main {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  align-items: center;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 12px 16px;
+  text-align: left;
+}
+.wl-main:hover:not(:disabled) {
+  background: var(--bg);
+}
+.wl-symbol {
+  font-weight: 700;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.wl-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.wl-right {
+  text-align: right;
+}
+.wl-ltp {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.wl-chg {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.wl-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.wl-badge.buy {
+  background: var(--green);
+  color: white;
+}
+.wl-badge.wait {
+  background: var(--bg);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+.wl-detail {
+  padding: 0 16px 12px;
+  font-size: 14px;
+}
+.wl-levels {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 8px 0;
+}
+.wl-levels .label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.wl-foot {
+  padding: 10px 16px;
+  margin: 0;
+  font-size: 12px;
+}
+@media (max-width: 560px) {
+  .wl-levels {
+    grid-template-columns: 1fr;
+  }
+}

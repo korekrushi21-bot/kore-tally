@@ -44,3 +44,20 @@ def test_market_holdings_surfaces_upstox_error(client):
         response = client.get("/market/holdings")
 
     assert response.status_code == 500
+
+
+def test_ltp_returns_prices_keyed_by_instrument_key(client):
+    _connect(client)
+    with respx.mock:
+        route = respx.get("https://api.upstox.com/v3/market-quote/ltp").mock(
+            return_value=Response(200, json={"status": "success", "data": {
+                "NSE_EQ:IDEA": {"last_price": 12.6, "instrument_token": "NSE_EQ|INE669E01016"},
+            }})
+        )
+        body = client.get("/market/ltp", params={"instrument_keys": "NSE_EQ|INE669E01016"}).json()
+    assert body == {"prices": {"NSE_EQ|INE669E01016": 12.6}}
+    assert route.calls.last.request.url.params["instrument_key"] == "NSE_EQ|INE669E01016"
+
+
+def test_ltp_requires_login(client):
+    assert client.get("/market/ltp", params={"instrument_keys": "NSE_EQ|X"}).status_code == 401
