@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { BacktestVerdict, NewsItem, OptionPlanDTO, ScanContext, ScanLatest, ScanResultDTO, SmartlistTag } from "../types";
 import { api, ApiError } from "../api";
+import { fromServerTime } from "./simple/translate";
 
 const VERDICT_LABEL: Record<BacktestVerdict, { text: string; pill: string; help: string }> = {
   supports: {
@@ -170,7 +171,7 @@ export function MorningScanPanel({ connected }: { connected: boolean }) {
           <span className="muted">
             {run.status === "RUNNING"
               ? `Scanning ${run.universe_size || ""} stocks… (about a minute)`
-              : `Last scan: ${new Date(run.finished_at ?? run.started_at).toLocaleString()} (${run.trigger}) · data up to ${
+              : `Last scan: ${fromServerTime(run.finished_at ?? run.started_at)?.toLocaleString()} (${run.trigger}) · data up to ${
                   run.data_date ?? "—"
                 } · ${run.scanned_count}/${run.universe_size} stocks${run.error_count ? ` · ${run.error_count} errors` : ""}`}
           </span>

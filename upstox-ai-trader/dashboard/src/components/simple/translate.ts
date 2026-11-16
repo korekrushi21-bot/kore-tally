@@ -55,3 +55,20 @@ export function pctChange(from: number, to: number): string {
   const p = ((to - from) / from) * 100;
   return `${p > 0 ? "+" : ""}${p.toFixed(1)}%`;
 }
+
+/** The backend stores times in UTC without a "Z" suffix; read them as UTC. */
+export function fromServerTime(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const hasZone = /[zZ]|[+-]\d\d:?\d\d$/.test(value);
+  return new Date(hasZone ? value : `${value}Z`);
+}
+
+export function marathiDateTime(d: Date | null): string {
+  if (!d) return "—";
+  return d.toLocaleString("mr-IN", { day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+export function marathiDate(isoDate: string | null | undefined): string {
+  if (!isoDate) return "—";
+  return new Date(`${isoDate}T00:00:00`).toLocaleDateString("mr-IN", { day: "numeric", month: "long", year: "numeric" });
+}

@@ -474,3 +474,11 @@ a.button.primary {
     grid-template-columns: 1fr;
   }
 }
+
+.buy-today-date {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 6px 10px;
+  display: inline-block;
+  margin-top: 0;
+}

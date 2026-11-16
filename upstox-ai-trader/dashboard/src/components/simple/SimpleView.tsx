@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AuthStatus, PaperAccount, PaperPositionDTO, ScanLatest, ScanResultDTO } from "../../types";
 import { api, ApiError } from "../../api";
-import { pctChange, riskReason, rupees, signalReason } from "./translate";
+import {
+  fromServerTime,
+  marathiDate,
+  marathiDateTime,
+  pctChange,
+  riskReason,
+  rupees,
+  signalReason,
+} from "./translate";
 import { Glossary } from "./Glossary";
 
 // Same per-browser filters the detailed scan panel uses, so both views agree.
@@ -125,6 +133,8 @@ export function SimpleView({
         </ul>
       </div>
 
+      <BuyTodayCard scan={scan} riskBudget={riskBudget} connected={connected} onTraded={onRefresh} />
+
       <div className="card">
         <h2>💡 आजच्या कल्पना</h2>
         <p className="muted">
@@ -191,7 +201,8 @@ function Steps({
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const run = scan?.run;
-  const todayDone = run?.status === "DONE" && new Date(run.started_at).toDateString() === new Date().toDateString();
+  const todayDone =
+    run?.status === "DONE" && fromServerTime(run.started_at)?.toDateString() === new Date().toDateString();
   const openCount = account?.open_positions.length ?? 0;
 
   async function startScan() {
@@ -485,6 +496,151 @@ function MyPractice({
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+const BUY_TODAY_MAX_PRICE = 200;
+
+/** BUY signals on shares under Rs 200 whose 2-year backtest was profitable,
+ *  stamped with the scan's date and time. */
+function BuyTodayCard({
+  scan,
+  riskBudget,
+  connected,
+  onTraded,
+}: {
+  scan: ScanLatest | null;
+  riskBudget: number;
+  connected: boolean;
+  onTraded: () => void;
+}) {
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const run = scan?.run;
+  const all = scan?.results ?? [];
+  const cheap = all.filter((r) => r.last_close !== null && r.last_close < BUY_TODAY_MAX_PRICE);
+  const rows = cheap.filter((r) => r.action === "BUY" && r.backtest.verdict === "supports");
+  const cheapBuysLosing = cheap.filter((r) => r.action === "BUY" && r.backtest.verdict !== "supports");
+  const watch = cheap.filter((r) => r.action !== "BUY" && r.backtest.verdict === "supports");
+
+  async function practise(r: ScanResultDTO) {
+    setBusyKey(r.instrument_key);
+    try {
+      const res = await api.paperEvaluate(r.instrument_key);
+      const er = res.entry_result;
+      const note =
+        er.action === "opened" && er.position
+          ? `सराव सुरू: ${er.position.quantity} शेअर्स @ ${rupees(er.position.entry_price, 2)}`
+          : er.action === "no_trade"
+          ? "आत्ताच्या भावावर संकेत राहिलेला नाही."
+          : (er.reasons ?? ["घेतला नाही."]).map(riskReason).join(" ");
+      setNotes((n) => ({ ...n, [r.instrument_key]: note }));
+      if (er.action === "opened") onTraded();
+    } catch (e) {
+      setNotes((n) => ({ ...n, [r.instrument_key]: e instanceof ApiError ? e.message : "काहीतरी चुकलं." }));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  return (
+    <div className="card buy-today">
+      <h2>📅 आज खरेदी: ₹{BUY_TODAY_MAX_PRICE} खालचे, backtest मध्ये फायदेशीर</h2>
+      <p className="buy-today-date">
+        {run ? (
+          <>
+            Scan: <strong>{marathiDateTime(fromServerTime(run.finished_at ?? run.started_at))}</strong> · भाव{" "}
+            <strong>{marathiDate(run.data_date)}</strong> च्या closing पर्यंतचे
+            {run.status === "RUNNING" && " · ⏳ नवीन scan चालू आहे…"}
+          </>
+        ) : (
+          "अजून scan झालेला नाही."
+        )}
+      </p>
+
+      {run?.status === "DONE" && rows.length === 0 && (
+        <div className="simple-empty">
+          <p>
+            <strong>आज या यादीत एकही शेअर नाही.</strong> ₹{BUY_TODAY_MAX_PRICE} खालचे {cheap.length} F&amp;O शेअर्स
+            तपासले.
+            {cheapBuysLosing.length > 0 &&
+              ` ${cheapBuysLosing.length} वर BUY संकेत आला (${cheapBuysLosing
+                .map((r) => r.symbol)
+                .join(", ")}), पण त्यांचा backtest फायदेशीर नाही, म्हणून इथे दाखवले नाहीत.`}
+          </p>
+          {watch.length > 0 && (
+            <p>
+              👀 <strong>लक्ष ठेवा:</strong> {watch.map((r) => `${r.symbol} (${rupees(r.last_close, 2)})`).join(", ")}.
+              यांचा backtest फायदेशीर आहे, पण आज BUY संकेत नाही. संकेत आला की ते इथे दिसतील.
+            </p>
+          )}
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>शेअर</th>
+                <th>भाव</th>
+                <th>खरेदी सुमारे</th>
+                <th>Stop-loss</th>
+                <th>Target</th>
+                <th>₹{Math.round(riskBudget).toLocaleString("en-IN")} धोक्यात</th>
+                <th>मागचे 2 वर्ष</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const entry = r.entry_price ?? r.last_close ?? 0;
+                const perShare = Math.abs(entry - (r.stop_loss ?? entry));
+                const shares = perShare > 0 ? Math.floor(riskBudget / perShare) : 0;
+                return (
+                  <tr key={r.instrument_key}>
+                    <td>
+                      <strong>{r.symbol}</strong>
+                      <div className="muted">{r.name}</div>
+                    </td>
+                    <td>{rupees(r.last_close, 2)}</td>
+                    <td>{rupees(entry, 2)}</td>
+                    <td className="text-red">
+                      {rupees(r.stop_loss, 2)} <small>({pctChange(entry, r.stop_loss ?? entry)})</small>
+                    </td>
+                    <td className="text-green">
+                      {rupees(r.target, 2)} <small>({pctChange(entry, r.target ?? entry)})</small>
+                    </td>
+                    <td>
+                      {shares} शेअर्स
+                      <div className="muted">≈ {rupees(shares * entry)}</div>
+                    </td>
+                    <td>
+                      🟢 {r.backtest.trades} trades,{" "}
+                      {r.backtest.win_rate !== null ? Math.round(r.backtest.win_rate * 100) : "—"}% जिंकले
+                      <div className="muted">{rupees(r.backtest.net_pnl)} नफा</div>
+                    </td>
+                    <td>
+                      <button
+                        className="primary"
+                        disabled={!connected || busyKey === r.instrument_key}
+                        onClick={() => practise(r)}
+                      >
+                        🧪 सराव
+                      </button>
+                      {notes[r.instrument_key] && <div className="muted">{notes[r.instrument_key]}</div>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="muted">
+        "फायदेशीर" म्हणजे याच नियमांनी या शेअरवर मागच्या 2 वर्षांत नफा झाला असता. भविष्याची खात्री नाही. आधी सराव करा.
+      </p>
     </div>
   );
 }
