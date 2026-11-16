@@ -97,7 +97,7 @@ export function MorningScanPanel({ connected }: { connected: boolean }) {
     load();
   }, [load]);
 
-  const running = data?.run?.status === "RUNNING";
+  const running = data?.run?.status === "RUNNING" || !!data?.in_progress;
   const doneRunId = data?.run?.status === "DONE" ? data.run.id : null;
   useEffect(() => {
     if (!connected || doneRunId === null || context?.run_id === doneRunId) return;
@@ -180,6 +180,12 @@ export function MorningScanPanel({ connected }: { connected: boolean }) {
       </div>
 
       {run?.status === "FAILED" && <div className="error-banner">Scan failed: {run.message}</div>}
+      {data?.in_progress && run?.status === "DONE" && (
+        <p className="muted">A new scan is running; showing the last finished scan until it completes.</p>
+      )}
+      {data?.latest_attempt?.status === "FAILED" && (
+        <p className="muted">The most recent scan attempt failed: {data.latest_attempt.message}</p>
+      )}
       {error && <div className="error-banner">{error}</div>}
 
       {run?.status === "DONE" && (

@@ -69,7 +69,7 @@ export function SimpleView({
   useEffect(() => {
     loadScan();
   }, [loadScan]);
-  const scanRunning = scan?.run?.status === "RUNNING";
+  const scanRunning = scan?.run?.status === "RUNNING" || !!scan?.in_progress;
   useEffect(() => {
     if (!scanRunning) return;
     const id = setInterval(loadScan, 4000);
@@ -238,7 +238,7 @@ function Steps({
         </li>
         <li className={todayDone ? "done" : "todo"}>
           <strong>आजचा scan</strong>
-          {run?.status === "RUNNING" ? (
+          {run?.status === "RUNNING" || scan?.in_progress ? (
             <span> ⏳ चालू आहे, साधारण 2 मिनिटं…</span>
           ) : todayDone ? (
             <span> ✅ आज झाला ({run?.data_date} पर्यंतचा data).</span>
@@ -552,7 +552,8 @@ function BuyTodayCard({
           <>
             Scan: <strong>{marathiDateTime(fromServerTime(run.finished_at ?? run.started_at))}</strong> · भाव{" "}
             <strong>{marathiDate(run.data_date)}</strong> च्या closing पर्यंतचे
-            {run.status === "RUNNING" && " · ⏳ नवीन scan चालू आहे…"}
+            {(run.status === "RUNNING" || scan?.in_progress) &&
+              " · ⏳ नवीन scan चालू आहे, तोपर्यंत ही मागच्या scan ची यादी"}
           </>
         ) : (
           "अजून scan झालेला नाही."

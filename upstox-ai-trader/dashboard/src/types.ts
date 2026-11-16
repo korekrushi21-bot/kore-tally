@@ -323,7 +323,9 @@ export interface OptionPlanDTO {
 }
 
 export interface ScanLatest {
-  run: ScanRunDTO | null;
+  run: ScanRunDTO | null; // newest FINISHED scan (results belong to it)
+  in_progress?: ScanRunDTO | null; // a newer scan still running
+  latest_attempt?: ScanRunDTO | null; // a newer scan that is running or failed
   results: ScanResultDTO[];
 }
 
