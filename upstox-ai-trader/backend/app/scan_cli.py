@@ -15,6 +15,7 @@ from pathlib import Path
 from app.api.routes.scan import execute_scan
 from app.db.base import Base, SessionLocal, engine
 from app.db.models import ScanRun
+from app.engine.scanner import clear_stale_runs
 
 _LOG = Path(__file__).resolve().parents[1] / "logs" / "scan.log"
 
@@ -23,6 +24,9 @@ def main() -> int:
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
+        cleared = clear_stale_runs(db)
+        if cleared:
+            _log(f"cleared {cleared} stale RUNNING scan(s)")
         if db.query(ScanRun).filter(ScanRun.status == "RUNNING").first():
             _log("skipped: another scan is marked RUNNING")
             return 1

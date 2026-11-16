@@ -295,6 +295,27 @@ def _result_row(run_id: int, stock: dict, outcome: StockOutcome) -> ScanResult:
     )
 
 
+STALE_RUN_AFTER = timedelta(minutes=20)  # a full scan normally takes about 2 minutes
+
+
+def clear_stale_runs(db: Session, now: datetime | None = None, max_age: timedelta = STALE_RUN_AFTER) -> int:
+    """Marks scans stuck at RUNNING (process killed, PC shut down, console
+    window closed) as FAILED, so they can't block every later scan forever.
+    Returns how many were cleared."""
+    now = now or datetime.now(timezone.utc)
+    cleared = 0
+    for run in db.scalars(select(ScanRun).where(ScanRun.status == "RUNNING")):
+        started = run.started_at if run.started_at.tzinfo else run.started_at.replace(tzinfo=timezone.utc)
+        if now - started > max_age:
+            run.status = "FAILED"
+            run.finished_at = now
+            run.message = "Interrupted: the scan process stopped before finishing (window closed or PC shut down?)"
+            cleared += 1
+    if cleared:
+        db.commit()
+    return cleared
+
+
 def latest_run(db: Session) -> ScanRun | None:
     return db.scalar(select(ScanRun).order_by(ScanRun.id.desc()).limit(1))
 

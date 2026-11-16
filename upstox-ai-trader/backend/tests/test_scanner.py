@@ -210,3 +210,40 @@ class _NonClosingSession:
 
     def __getattr__(self, name):
         return getattr(self._s, name)
+
+
+def test_stale_running_scan_is_cleared_but_a_fresh_one_is_not(db_session):
+    from datetime import datetime, timedelta, timezone
+
+    from app.engine.scanner import clear_stale_runs
+
+    now = datetime(2026, 11, 16, 4, 0, tzinfo=timezone.utc)
+    stuck = ScanRun(status="RUNNING", started_at=(now - timedelta(minutes=45)).replace(tzinfo=None))
+    fresh = ScanRun(status="RUNNING", started_at=(now - timedelta(minutes=2)).replace(tzinfo=None))
+    db_session.add_all([stuck, fresh])
+    db_session.commit()
+
+    assert clear_stale_runs(db_session, now=now) == 1
+    assert stuck.status == "FAILED" and "Interrupted" in stuck.message
+    assert fresh.status == "RUNNING"
+
+
+def test_scan_now_is_not_blocked_by_a_stuck_run(client, db_session):
+    from datetime import datetime, timedelta, timezone
+
+    db_session.add(ScanRun(status="RUNNING", started_at=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=2)))
+    db_session.commit()
+    from app.api.routes import scan as scan_route
+
+    async def no_job(*a, **k):
+        return None
+
+    import pytest
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(scan_route, "execute_scan", no_job)
+    try:
+        response = client.post("/scan/run")
+    finally:
+        mp.undo()
+    assert response.status_code == 200, response.text

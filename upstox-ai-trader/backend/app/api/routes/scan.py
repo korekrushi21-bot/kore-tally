@@ -60,6 +60,8 @@ async def execute_scan(run_id: int, trigger: str, limit: int | None = None) -> N
 
 @router.post("/run")
 async def start_scan(background: BackgroundTasks, limit: int | None = None, db: Session = Depends(get_db)):
+    if not _scan_lock.locked():
+        scanner.clear_stale_runs(db)
     if _scan_lock.locked() or db.scalar(select(ScanRun).where(ScanRun.status == "RUNNING").limit(1)):
         raise HTTPException(status_code=409, detail="A scan is already running")
     run = ScanRun(trigger="manual", status="RUNNING")
