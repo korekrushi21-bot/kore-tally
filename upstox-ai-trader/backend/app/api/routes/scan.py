@@ -92,11 +92,12 @@ def latest(db: Session = Depends(get_db)):
     shown = scanner.latest_done_run(db) or newest
     newer = newest if newest.id != shown.id else None
     plans = scanner.option_plans(db, shown.id)
+    stats = scanner.result_stats(db, shown.id)
     return {
         "run": run_dict(shown),
         "in_progress": run_dict(newer) if newer is not None and newer.status == "RUNNING" else None,
         "latest_attempt": run_dict(newer) if newer is not None else None,
-        "results": [result_dict(r, plans.get(r.id)) for r in scanner.ranked_results(db, shown.id)]
+        "results": [result_dict(r, plans.get(r.id), stats.get(r.id)) for r in scanner.ranked_results(db, shown.id)]
         if shown.status == "DONE"
         else [],
     }
@@ -148,7 +149,7 @@ def run_dict(run: ScanRun) -> dict:
     }
 
 
-def result_dict(r, option_plan: dict | None = None) -> dict:
+def result_dict(r, option_plan: dict | None = None, stats: dict | None = None) -> dict:
     return {
         "instrument_key": r.instrument_key,
         "symbol": r.symbol,
@@ -172,4 +173,5 @@ def result_dict(r, option_plan: dict | None = None) -> dict:
         },
         "error": r.error,
         "option_plan": option_plan,
+        "stats": stats,
     }

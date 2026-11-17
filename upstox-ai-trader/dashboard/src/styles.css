@@ -756,3 +756,33 @@ a.button.primary {
   font-size: 12px;
   margin: 8px 0 0;
 }
+
+/* ---- Fast movers ---- */
+.mv-tabs {
+  padding: 0 16px;
+}
+.mv-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 1px solid var(--border);
+}
+.mv-cols > div + div {
+  border-left: 1px solid var(--border);
+}
+.mv-col-title {
+  font-weight: 600;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.mv-empty {
+  padding: 12px 16px;
+  margin: 0;
+}
+@media (max-width: 700px) {
+  .mv-cols {
+    grid-template-columns: 1fr;
+  }
+  .mv-cols > div + div {
+    border-left: 0;
+  }
+}

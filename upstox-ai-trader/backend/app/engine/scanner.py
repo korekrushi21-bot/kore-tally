@@ -23,8 +23,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import UpstoxAPIError
-from app.db.models import ScanOptionPlan, ScanResult, ScanRun
-from app.engine import option_picker
+from app.db.models import ScanOptionPlan, ScanResult, ScanResultStats, ScanRun
+from app.engine import indicators, option_picker
 from app.engine.backtest import run_backtest
 from app.engine.candle import Candle, candles_from_upstox
 from app.engine.options import OptionContract
@@ -61,6 +61,7 @@ class StockOutcome:
     signal_obj: Signal | None = None
     avg_holding_days: float | None = None
     option_plan: dict | None = None
+    stats: dict | None = None
 
 
 def backtest_verdict(metrics: dict, config: ScanConfig) -> str:
@@ -108,7 +109,28 @@ def analyse_stock(candles: list[Candle], instrument_key: str, config: ScanConfig
         verdict=backtest_verdict(metrics, config),
         signal_obj=sig,
         avg_holding_days=avg_holding_days,
+        stats=movement_stats(candles),
     )
+
+
+MOVE_WINDOW = 20
+
+
+def movement_stats(candles: list[Candle]) -> dict:
+    """How fast a stock usually moves: ATR14 as % of the last close, the mean
+    absolute daily % change over the last 20 sessions, and the last session's
+    % change."""
+    last = candles[-1]
+    atr_series = indicators.atr(candles, 14)
+    atr_pct = atr_series[-1] / last.close * 100 if atr_series[-1] and last.close else None
+    closes = [c.close for c in candles[-(MOVE_WINDOW + 1):]]
+    moves = [abs(b - a) / a * 100 for a, b in zip(closes, closes[1:]) if a]
+    day = (closes[-1] - closes[-2]) / closes[-2] * 100 if len(closes) >= 2 and closes[-2] else None
+    return {
+        "atr_pct": round(atr_pct, 2) if atr_pct is not None else None,
+        "avg_move_pct": round(sum(moves) / len(moves), 2) if moves else None,
+        "last_day_change_pct": round(day, 2) if day is not None else None,
+    }
 
 
 class _Throttle:
@@ -248,9 +270,12 @@ async def run_scan(
         for stock, outcome in outcomes:
             row = _result_row(run.id, stock, outcome)
             db.add(row)
-            if outcome.option_plan is not None:
+            if outcome.option_plan is not None or outcome.stats is not None:
                 db.flush()
+            if outcome.option_plan is not None:
                 db.add(ScanOptionPlan(result_id=row.id, plan=outcome.option_plan))
+            if outcome.stats is not None:
+                db.add(ScanResultStats(result_id=row.id, **outcome.stats))
             if outcome.action == "ERROR":
                 run.error_count += 1
             else:
@@ -331,6 +356,22 @@ def option_plans(db: Session, run_id: int) -> dict[int, dict]:
         .where(ScanResult.run_id == run_id)
     )
     return {result_id: plan for result_id, plan in rows}
+
+
+def result_stats(db: Session, run_id: int) -> dict[int, dict]:
+    rows = db.execute(
+        select(ScanResultStats)
+        .join(ScanResult, ScanResult.id == ScanResultStats.result_id)
+        .where(ScanResult.run_id == run_id)
+    ).scalars()
+    return {
+        s.result_id: {
+            "atr_pct": s.atr_pct,
+            "avg_move_pct": s.avg_move_pct,
+            "last_day_change_pct": s.last_day_change_pct,
+        }
+        for s in rows
+    }
 
 
 def ranked_results(db: Session, run_id: int) -> list[ScanResult]:

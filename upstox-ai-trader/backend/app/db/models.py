@@ -254,3 +254,16 @@ class ScanOptionPlan(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     result_id: Mapped[int] = mapped_column(ForeignKey("scan_results.id"), unique=True, index=True)
     plan: Mapped[dict] = mapped_column(JSON)
+
+
+class ScanResultStats(Base):
+    """How much a stock moves, per scan result (a separate table so
+    scan_results needs no migration)."""
+
+    __tablename__ = "scan_result_stats"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    result_id: Mapped[int] = mapped_column(ForeignKey("scan_results.id"), unique=True, index=True)
+    atr_pct: Mapped[float | None] = mapped_column(Float, nullable=True)  # ATR14 / close, in %
+    avg_move_pct: Mapped[float | None] = mapped_column(Float, nullable=True)  # mean |daily % change|, last 20 days
+    last_day_change_pct: Mapped[float | None] = mapped_column(Float, nullable=True)  # last candle vs the one before
