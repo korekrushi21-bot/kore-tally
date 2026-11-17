@@ -281,6 +281,7 @@ export interface ScanResultDTO {
   };
   error: string | null;
   option_plan: OptionPlanDTO | null;
+  stats?: { atr_pct: number | null; avg_move_pct: number | null; last_day_change_pct: number | null } | null;
 }
 
 export interface OptionPlanDTO {

@@ -279,3 +279,25 @@ def test_latest_clears_a_killed_scan_on_load(client, db_session):
     assert body["in_progress"] is None
     assert body["run"]["status"] == "FAILED"  # no finished scan exists, so the failed one is shown
     assert "Interrupted" in body["run"]["message"]
+
+
+def test_movement_stats_measure_how_fast_a_stock_moves():
+    from app.engine.candle import candles_from_upstox
+    from app.engine.scanner import movement_stats
+
+    stats = movement_stats(candles_from_upstox(_uptrend_rows()))
+    assert stats["atr_pct"] > 0
+    assert stats["avg_move_pct"] > 0
+    assert stats["last_day_change_pct"] is not None
+
+    calm = _candles([100.0 + (0.1 if i % 2 else 0) for i in range(80)])
+    wild = _candles([100.0 + (8 if i % 2 else 0) for i in range(80)])
+    assert movement_stats(wild)["avg_move_pct"] > movement_stats(calm)["avg_move_pct"] * 10
+
+
+def test_scan_saves_movement_stats_and_latest_returns_them(client, db_session):
+    client_fake = FakeCandleClient({"NSE_EQ|A": _uptrend_rows()})
+    run = asyncio.run(run_scan(db_session, client_fake, _universe("NSE_EQ|A"), TODAY, config=FAST))
+    body = client.get("/scan/latest").json()
+    assert body["run"]["id"] == run.id
+    assert body["results"][0]["stats"]["atr_pct"] > 0
